@@ -1041,7 +1041,7 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 					if (r2 == r1) {
 						r2 = (*E)[h][s];
 					}
-					if (r2 == -1) continue;
+					if (r2 < 0) continue;
 					deleteFromVec(edge2parts,r2,currPartIndex);
 					break;
 				case DEPENDENCYPART_GRANDPAR:
@@ -1053,7 +1053,7 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 					if (r2 == r1) {
 						r2 = (*E)[h][m];
 					}
-					if (r2 == -1) continue;
+					if (r2 < 0) continue;
 					deleteFromVec(edge2parts,r2,currPartIndex);
 
 					break;
@@ -1229,7 +1229,7 @@ void calcLoss(int r, vector<vector<int> > *E,const vector<double> &scores, vecto
 				CHECK(false);
 		}
 		if (denominator == 0.0) {
-			gainedParts2remove.push_back(part_r);
+			gainedParts2remove.push_back(part_index);
 		} else {
 			gain += scores[part_r] / denominator;
 			if (printIlan) {
@@ -1314,7 +1314,7 @@ void calcLoss(int r, vector<vector<int> > *E,const vector<double> &scores, vecto
 				CHECK(false);
 		}
 		if (needToRemove) {
-			parts2remove.push_back(lost_part_r);
+			parts2remove.push_back(lost_part_index);
 		} else {
 			loss += scores[lost_part_r];
 			if (printIlan) {
