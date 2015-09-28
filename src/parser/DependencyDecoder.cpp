@@ -788,13 +788,11 @@ void printSampleFromEdge2parts(vector<vector<int> > edge2parts, DependencyParts 
 	}
 }
 
-void printAll(DependencyParts* parts, vector<vector<int> > edge2LostEdges, vector<vector<int> > E, vector<double> part2prob, vector<int> roots, vector<vector<int> > edge2parts, const vector<double> &scores) {
+void printAll(DependencyParts* parts, vector<vector<int> > edge2LostEdges, vector<vector<int> > E, vector<int> roots, vector<vector<int> > edge2parts, const vector<double> &scores) {
 	printEdge2LostEdges(parts,edge2LostEdges);
 	printE(E);
 	printRoots(roots);
 	printSampleFromEdge2parts(edge2parts,parts,5);
-	printPart2prob(part2prob, parts, scores);
-
 }
 
 void initsecondaryDS(vector<int> *roots, vector<vector<int> > *subTrees, int sentenceSize) {
@@ -806,8 +804,8 @@ void initsecondaryDS(vector<int> *roots, vector<vector<int> > *subTrees, int sen
 }
 
 void initDataStructures(DependencyParts *dependency_parts, int offset_arcs, int num_arcs, int sentenceSize,
-		vector<double> *edge2Gain, vector<double> *edge2Loss, vector<double> *part2prob, const vector<double> &scores,
-		vector<vector<int> > *edge2LostEdges, vector<vector<int> > *edge2LostParts, vector<vector<int> > *E, vector<vector<int> > *edge2parts, vector<double> *part2val, double alpha) {
+		const vector<double> &scores, vector<vector<int> > *edge2LostEdges, vector<vector<int> > *edge2LostParts,
+		vector<vector<int> > *E, vector<vector<int> > *edge2parts) {
 
 
 	(*edge2LostEdges).assign(num_arcs,vector<int>());
@@ -850,38 +848,6 @@ void initDataStructures(DependencyParts *dependency_parts, int offset_arcs, int 
 			}
 		}
 	}
-
-
-
-	(*edge2Gain).resize(num_arcs);
-	(*edge2Loss).resize(num_arcs);
-	vector<double> copied_scores(scores);
-
-	(*part2val) = scores;
-	(*part2prob).assign(dependency_parts->size(),1.0);
-
-	for (int v1= 1; v1 < sentenceSize; v1++) {
-		double denominator = 0.0;
-		for (int u1= 0; u1 < sentenceSize; u1++) {
-			int r = (*E)[u1][v1];
-			if (r < 0) continue;
-			denominator += exp(alpha * scores[r]);
-		}
-//		cout << "v = " << v1 << ", denom = " << denominator << endl;
-		for (int u1= 0; u1 < sentenceSize; u1++) {
-			int r = (*E)[u1][v1];
-			if (r < 0) continue;
-			double prob = exp(alpha * scores[r])/denominator;
-//			cout << "u = " << u1 << ", exp(score) = " << exp(scores[r]) << ", prob = " << prob << endl;
-			(*part2prob)[r] = prob;
-			(*part2val)[r] = scores[r] * prob;
-			for (int partIndex = 0; partIndex < (*edge2parts)[r].size(); partIndex++) {
-				int part_r = (*edge2parts)[r][partIndex];
-				(*part2val)[part_r] *= prob;
-				(*part2prob)[part_r] *= prob;
-			}
-		}
-	}
 }
 
 void freeDataStructures(DependencyParts *dependency_parts, int offset_arcs, int num_arcs, int sentenceSize,
@@ -912,11 +878,10 @@ void deleteFromVec(vector<vector<int> > *vec, int r, int val) {
 }
 
 void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs, int sentenceSize,
-		vector<double> *edge2Gain, vector<double> *edge2Loss, vector<double> *part2prob, const vector<double> &scores,
-		vector<vector<int> > *edge2LostEdges, vector<vector<int> > *edge2LostParts, vector<vector<int> > *E, vector<vector<int> > *edge2parts, vector<double> *predicted_output, vector<double> *part2val) {
+		const vector<double> &scores, vector<vector<int> > *edge2LostEdges, vector<vector<int> > *edge2LostParts,
+		vector<vector<int> > *E, vector<vector<int> > *edge2parts, vector<double> *predicted_output) {
 	double eps = 0.00001;
 	int r = (*E)[u][v];
-	double p = (*part2prob)[r];
 	vector<int> lostEdgesIndices;
 	lostEdgesIndices = (*edge2LostEdges)[r];
 
@@ -929,8 +894,7 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 		int lost_v = lostArc->modifier();
 
 		// delete E entry
-		(*E)[lost_u][lost_v] = -1;
-		(*part2prob)[r1] = 0.0;
+		(*E)[lost_u][lost_v] = -2;
 
 		// remove all parts that need to be removed
 		vector<int> lostPartsIndices = (*edge2parts)[r1];
@@ -940,8 +904,6 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 			DependencyPartGrandpar *lostGP;
 			int currPartIndex = lostPartsIndices[j];
 			Part *currPart = (*dependency_parts)[currPartIndex];
-			(*part2prob)[currPartIndex] = 0.0;
-			(*part2val)[currPartIndex] = 0.0;
 			switch (currPart->type()) {
 				case DEPENDENCYPART_SIBL:
 					lostSibl = static_cast<DependencyPartSibl*>(currPart);
@@ -981,25 +943,64 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 
 	// update part2prob for u,v and output vector
 	(*predicted_output)[r] = 1.0;
-	for (int j = 0; j < (*edge2parts)[r].size(); j++) {
-		int r2 = (*edge2parts)[r][j];
-		(*part2prob)[r2] /= p;
-		(*part2val)[r2] /= p;
-		if (abs((*part2prob)[r2] - 1) < eps) {
-			(*predicted_output)[r2] = 1.0;
+		for (int j = 0; j < (*edge2parts)[r].size(); j++) {
+			int r2 = (*edge2parts)[r][j];
+			int r3,r4,h,m,s,g,k;
+			DependencyPartSibl *lostSibl;
+			DependencyPartGrandpar *lostGP;
+			Part *currPart = (*dependency_parts)[r2];
+			bool completedPart = true;
+			switch (currPart->type()) {
+				case DEPENDENCYPART_SIBL:
+					lostSibl = static_cast<DependencyPartSibl*>(currPart);
+					h = lostSibl->head();
+					m = lostSibl->modifier();
+					s = lostSibl->sibling();
+					r4 = (*E)[h][m];
+					if (r4 > -1) {
+						completedPart = false;
+						break;
+					}
+					r3 = (*E)[h][s];
+					if (r3 > -1) {
+						completedPart = false;
+						break;
+					}
+					break;
+				case DEPENDENCYPART_GRANDPAR:
+					lostGP = static_cast<DependencyPartGrandpar*>(currPart);
+					g = lostGP->grandparent();
+					h = lostGP->head();
+					m = lostGP->modifier();
+					r4 = (*E)[g][h];
+					if (r4 > -1) {
+						completedPart = false;
+						break;
+					}
+					r3 = (*E)[h][m];
+					if (r3 > -1) {
+						completedPart = false;
+						break;
+					}
+					break;
+				default:
+					LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+					CHECK(false);
+			}
+			if (completedPart) {
+				(*predicted_output)[r2] = 1.0;
+			}
 		}
-	}
 	(*edge2parts)[r].clear();
 }
 
 void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, int sentenceSize, vector<int> *roots,
-		vector<double> *edge2Gain, vector<double> *edge2Loss, vector<double> *part2prob, const vector<double> &scores,
-		vector<vector<int> > *edge2LostEdges, vector<vector<int> > *edge2LostParts, vector<vector<int> > *E, vector<vector<int> > *subTrees, vector<vector<int> > *edge2parts, vector<double> *predicted_output, vector<double> *part2val, double alpha) {
+		const vector<double> &scores, vector<vector<int> > *edge2LostEdges, vector<vector<int> > *edge2LostParts,
+		vector<vector<int> > *E, vector<vector<int> > *subTrees, vector<vector<int> > *edge2parts, vector<double> *predicted_output) {
 
 
 	double eps = 0.00001;
 	int r = (*E)[u][v];
-	double p = (*part2prob)[r];
 	int uRoot = (*roots)[u];
 	vector<int> lostEdgesIndices;
 	try {
@@ -1020,8 +1021,7 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 		int lost_v = lostArc->modifier();
 
 		// delete E entry
-		(*E)[lost_u][lost_v] = -1;
-		(*part2prob)[r1] = 0.0;
+		(*E)[lost_u][lost_v] = -2;
 
 		// remove all parts that need to be removed
 		vector<int> lostPartsIndices = (*edge2parts)[r1];
@@ -1031,8 +1031,6 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 			DependencyPartGrandpar *lostGP;
 			int currPartIndex = lostPartsIndices[j];
 			Part *currPart = (*dependency_parts)[currPartIndex];
-			(*part2prob)[currPartIndex] = 0.0;
-			(*part2val)[currPartIndex] = 0.0;
 			switch (currPart->type()) {
 				case DEPENDENCYPART_SIBL:
 					lostSibl = static_cast<DependencyPartSibl*>(currPart);
@@ -1117,61 +1115,128 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 		}
 	}
 
-	// update part2prob for lost edges
-	double denominator = 0.0;
-	for (int u1= 0; u1 < sentenceSize; u1++) {
-		int r2 = (*E)[u1][uRoot];
-		if (r2 < 0) continue;
-		denominator += exp(alpha * scores[r2]);
-	}
-	for (int u1= 0; u1 < sentenceSize; u1++) {
-		int r2 = (*E)[u1][uRoot];
-		if (r2 < 0) continue;
-		double prob = exp(alpha * scores[r2])/denominator;
-		double oldProb = (*part2prob)[r2];
-		if (abs(prob - oldProb) > eps) {
-			(*part2prob)[r2] = prob;
-			(*part2val)[r2] = scores[r2] * prob;
-			double factor = prob/oldProb;
-			for (int partIndex = 0; partIndex < (*edge2parts)[r2].size(); partIndex++) {
-				int part_r = (*edge2parts)[r2][partIndex];
-				(*part2prob)[part_r] *= factor;
-				(*part2val)[part_r] *= factor;
-			}
-		}
-	}
-
 	// update part2prob for u,v and output vector
 	(*predicted_output)[r] = 1.0;
 	for (int j = 0; j < (*edge2parts)[r].size(); j++) {
 		int r2 = (*edge2parts)[r][j];
-		(*part2prob)[r2] /= p;
-		(*part2val)[r2] /= p;
-		if (abs((*part2prob)[r2] - 1) < eps) {
+		int r3,r4,h,m,s,g,k;
+		DependencyPartSibl *lostSibl;
+		DependencyPartGrandpar *lostGP;
+		Part *currPart = (*dependency_parts)[r2];
+		bool completedPart = true;
+		switch (currPart->type()) {
+			case DEPENDENCYPART_SIBL:
+				lostSibl = static_cast<DependencyPartSibl*>(currPart);
+				h = lostSibl->head();
+				m = lostSibl->modifier();
+				s = lostSibl->sibling();
+				r4 = (*E)[h][m];
+				if (r4 > -1) {
+					completedPart = false;
+					break;
+				}
+				r3 = (*E)[h][s];
+				if (r3 > -1) {
+					completedPart = false;
+					break;
+				}
+				break;
+			case DEPENDENCYPART_GRANDPAR:
+				lostGP = static_cast<DependencyPartGrandpar*>(currPart);
+				g = lostGP->grandparent();
+				h = lostGP->head();
+				m = lostGP->modifier();
+				r4 = (*E)[g][h];
+				if (r4 > -1) {
+					completedPart = false;
+					break;
+				}
+				r3 = (*E)[h][m];
+				if (r3 > -1) {
+					completedPart = false;
+					break;
+				}
+				break;
+			default:
+				LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+				CHECK(false);
+		}
+		if (completedPart) {
 			(*predicted_output)[r2] = 1.0;
 		}
+
 	}
 	(*edge2parts)[r].clear();
 }
 
-void calcLoss(int r, const vector<double> &scores, vector<vector<int> > &edge2parts, const vector<double> &part2prob, vector<vector<int> > *edge2LostEdges,
-		vector<vector<int> > *edge2LostParts, double *val, const vector<double> *part2val, bool printIlan, DependencyParts *dependency_parts, double beta) {
+void calcLoss(int r, vector<vector<int> > *E,const vector<double> &scores, vector<vector<int> > &edge2parts, vector<vector<int> > *edge2LostEdges,
+		vector<vector<int> > *edge2LostParts, double *val, bool printIlan, DependencyParts *dependency_parts, double beta) {
 	double gain = scores[r];
-	double edge_prob = part2prob[r];
 	if (printIlan) {
 		cout << "parts gained:\n" << (*dependency_parts)[r]->toStr() << " = " << gain;
 	}
 	vector<int> gainedParts2remove;
 	for (int part_index = 0; part_index < edge2parts[r].size(); part_index++) {
+		int denominator = 0.0;
 		int part_r = edge2parts[r][part_index];
-		if (part2prob[part_r] == 0.0) {
-			gainedParts2remove.push_back(part_index);
+		int r2,r3,h,m,s,g,k;
+		DependencyPartSibl *lostSibl;
+		DependencyPartGrandpar *lostGP;
+		Part *currPart = (*dependency_parts)[part_r];
+		switch (currPart->type()) {
+			case DEPENDENCYPART_SIBL:
+				lostSibl = static_cast<DependencyPartSibl*>(currPart);
+				h = lostSibl->head();
+				m = lostSibl->modifier();
+				s = lostSibl->sibling();
+				r2 = (*E)[h][m];
+				if (r2 == -2) {
+					denominator = 0.0;
+					break;
+				} else if (r2 > -1) {
+					denominator +=1;
+				}
+				r3 = (*E)[h][s];
+				if (r3 == -2) {
+					denominator = 0.0;
+					break;
+				} else if (r3 > -1) {
+					denominator +=1;
+				}
+				break;
+			case DEPENDENCYPART_GRANDPAR:
+				lostGP = static_cast<DependencyPartGrandpar*>(currPart);
+				g = lostGP->grandparent();
+				h = lostGP->head();
+				m = lostGP->modifier();
+				r2 = (*E)[g][h];
+				if (r2 == -2) {
+					denominator = 0.0;
+					break;
+				} else if (r2 > -1) {
+					denominator +=1;
+				}
+				r3 = (*E)[h][m];
+				if (r3 == -2) {
+					denominator = 0.0;
+					break;
+				} else if (r3 > -1) {
+					denominator +=1;
+				}
+				break;
+			default:
+				LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+				CHECK(false);
+		}
+		if (denominator == 0.0) {
+			gainedParts2remove.push_back(part_r);
 		} else {
-			gain += (*part2val)[part_r] / edge_prob;
+			gain += scores[part_r] / denominator;
 			if (printIlan) {
-				cout << ", " << (*dependency_parts)[part_r]->toStr() << " = " << (*part2val)[part_r] / edge_prob;
+				cout << ", " << (*dependency_parts)[part_r]->toStr() << " = " << scores[part_r] / denominator;
 			}
 		}
+
 	}
 	for (int part2removeIndex = gainedParts2remove.size() - 1; part2removeIndex >= 0; part2removeIndex--) {
 		edge2parts[r].erase(edge2parts[r].begin() + gainedParts2remove[part2removeIndex]);
@@ -1184,12 +1249,16 @@ void calcLoss(int r, const vector<double> &scores, vector<vector<int> > &edge2pa
 	}
 	for (int lost_arc_index = 0; lost_arc_index < (*edge2LostEdges)[r].size(); lost_arc_index++) {
 		int lost_arc_r = (*edge2LostEdges)[r][lost_arc_index];
-		if (part2prob[lost_arc_r] == 0.0) {
+		Part *currArc = (*dependency_parts)[lost_arc_r];
+		DependencyPartArc *lostArc = static_cast<DependencyPartArc*>(currArc);
+		int h = lostArc->head();
+		int m = lostArc->modifier();
+		if ((*E)[h][m] == -2) {
 			arcs2remove.push_back(lost_arc_index);
 		} else {
-			loss += (*part2val)[lost_arc_r];
+			loss += scores[lost_arc_r];
 			if (printIlan) {
-				cout << (*dependency_parts)[lost_arc_r]->toStr() << " = " << (*part2val)[lost_arc_r] << ", ";
+				cout << (*dependency_parts)[lost_arc_r]->toStr() << " = " << scores[lost_arc_r] << ", ";
 			}
 		}
 	}
@@ -1202,12 +1271,54 @@ void calcLoss(int r, const vector<double> &scores, vector<vector<int> > &edge2pa
 	vector<int> parts2remove;
 	for (int lost_part_index = 0; lost_part_index < (*edge2LostParts)[r].size(); lost_part_index++ ) {
 		int lost_part_r = (*edge2LostParts)[r][lost_part_index];
-		if (part2prob[lost_part_r] == 0.0) {
-			parts2remove.push_back(lost_part_index);
+		bool needToRemove = false;
+		int r2,r3,h,m,s,g,k;
+		DependencyPartSibl *lostSibl;
+		DependencyPartGrandpar *lostGP;
+		Part *currPart = (*dependency_parts)[lost_part_r];
+		switch (currPart->type()) {
+			case DEPENDENCYPART_SIBL:
+				lostSibl = static_cast<DependencyPartSibl*>(currPart);
+				h = lostSibl->head();
+				m = lostSibl->modifier();
+				s = lostSibl->sibling();
+				r2 = (*E)[h][m];
+				if (r2 == -2) {
+					needToRemove = true;
+					break;
+				}
+				r3 = (*E)[h][s];
+				if (r3 == -2) {
+					needToRemove = true;
+					break;
+				}
+				break;
+			case DEPENDENCYPART_GRANDPAR:
+				lostGP = static_cast<DependencyPartGrandpar*>(currPart);
+				g = lostGP->grandparent();
+				h = lostGP->head();
+				m = lostGP->modifier();
+				r2 = (*E)[g][h];
+				if (r2 == -2) {
+					needToRemove = true;
+					break;
+				}
+				r3 = (*E)[h][m];
+				if (r3 == -2) {
+					needToRemove = true;
+					break;
+				}
+				break;
+			default:
+				LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+				CHECK(false);
+		}
+		if (needToRemove) {
+			parts2remove.push_back(lost_part_r);
 		} else {
-			loss += (*part2val)[lost_part_r];
+			loss += scores[lost_part_r];
 			if (printIlan) {
-				cout << (*dependency_parts)[lost_part_r]->toStr() << " = " << (*part2val)[lost_part_r] << ", ";
+				cout << (*dependency_parts)[lost_part_r]->toStr() << " = " << scores[lost_part_r] << ", ";
 			}
 		}
 	}
@@ -1229,21 +1340,19 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 	DependencyParts *dependency_parts = static_cast<DependencyParts*>(parts);
 	DependencyInstanceNumeric* sentence = static_cast<DependencyInstanceNumeric*>(instance);
 	int sentenceSize = sentence->size();
-	double alpha = pipe_->GetDependencyOptions()->alpha();
 	double beta = pipe_->GetDependencyOptions()->beta();
 	int offset_arcs, num_arcs;
 	dependency_parts->GetOffsetArc(&offset_arcs, &num_arcs);
 
 	vector<int> roots;
-	vector<double> edge2Gain, edge2Loss, part2prob, part2val;
 	vector<vector<int> > edge2LostEdges, edge2LostParts, E, subTrees, edge2parts;
 
-	initDataStructures(dependency_parts, offset_arcs, num_arcs, sentenceSize, &edge2Gain, &edge2Loss, &part2prob, scores,
-			&edge2LostEdges, &edge2LostParts, &E, &edge2parts, &part2val, alpha);
+	initDataStructures(dependency_parts, offset_arcs, num_arcs, sentenceSize, scores,
+			&edge2LostEdges, &edge2LostParts, &E, &edge2parts);
 	initsecondaryDS(&roots, &subTrees, sentenceSize);
 
 	if (printIlan) {
-		printAll(dependency_parts, edge2LostEdges, E, part2prob, roots, edge2parts, scores);
+		printAll(dependency_parts, edge2LostEdges, E, roots, edge2parts, scores);
 		LOG(INFO) << "after building data structures" << endl;
 	}
 	// n * ( E + n )
@@ -1266,7 +1375,7 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 					singleHead = false;
 				}
 				double currLoss;
-				calcLoss(r, scores, edge2parts, part2prob, &edge2LostEdges, &edge2LostParts, &currLoss, &part2val,printIlan, dependency_parts, beta);
+				calcLoss(r, &E, scores, edge2parts, &edge2LostEdges, &edge2LostParts, &currLoss ,printIlan, dependency_parts, beta);
 				if (printIlan) {
 					LOG(INFO) << "(u,v)=" << u << "," << v << ", loss =" << currLoss  << endl;
 				}
@@ -1303,11 +1412,11 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 		if (best_v == -1) {
 			return;
 		}
-		updateData(best_u, best_v,dependency_parts, num_arcs, sentenceSize, &roots, &edge2Gain, &edge2Loss, &part2prob, scores,
-				&edge2LostEdges, &edge2LostParts, &E, &subTrees, &edge2parts, predicted_output, &part2val,alpha);
+		updateData(best_u, best_v,dependency_parts, num_arcs, sentenceSize, &roots, scores,
+				&edge2LostEdges, &edge2LostParts, &E, &subTrees, &edge2parts, predicted_output);
 		if (printIlan) {
 			LOG(INFO) << "\n\nafter update data";
-			printAll(dependency_parts, edge2LostEdges, E, part2prob, roots, edge2parts, scores);
+			printAll(dependency_parts, edge2LostEdges, E, roots, edge2parts, scores);
 		}
 	}
 //
@@ -1324,18 +1433,16 @@ void DependencyDecoder::Decode2SidedMinLoss(Instance *instance, Parts *parts,
 	DependencyInstanceNumeric* sentence = static_cast<DependencyInstanceNumeric*>(instance);
 	int sentenceSize = sentence->size();
 
-	double alpha = pipe_->GetDependencyOptions()->alpha();
 	double beta = pipe_->GetDependencyOptions()->beta();
 
 	int offset_arcs, num_arcs;
 	dependency_parts->GetOffsetArc(&offset_arcs, &num_arcs);
 
-	vector<double> edge2Gain, edge2Loss, part2prob, part2val;
 	vector<vector<int> > edge2LostEdges, edge2LostParts, E, edge2parts;
 
 
-	initDataStructures(dependency_parts, offset_arcs, num_arcs, sentenceSize, &edge2Gain, &edge2Loss, &part2prob, scores,
-			&edge2LostEdges, &edge2LostParts, &E, &edge2parts, &part2val,alpha);
+	initDataStructures(dependency_parts, offset_arcs, num_arcs, sentenceSize, scores,
+			&edge2LostEdges, &edge2LostParts, &E, &edge2parts);
 
 	// n * ( E + n )
 	vector<int> leftSide;
@@ -1356,7 +1463,7 @@ void DependencyDecoder::Decode2SidedMinLoss(Instance *instance, Parts *parts,
 				int r = E[u][v];
 				if (r < 0) continue;
 				double currLoss;
-				calcLoss(r, scores, edge2parts, part2prob, &edge2LostEdges, &edge2LostParts, &currLoss, &part2val,printIlan, dependency_parts,beta);
+				calcLoss(r, &E, scores, edge2parts, &edge2LostEdges, &edge2LostParts, &currLoss ,printIlan, dependency_parts,beta);
 				if (printIlan) {
 					LOG(INFO) << "(u,v)=" << u << "," << v << ", loss =" << currLoss  << endl;
 				}
@@ -1382,8 +1489,8 @@ void DependencyDecoder::Decode2SidedMinLoss(Instance *instance, Parts *parts,
 		if (best_v == -1) {
 			return;
 		}
-		updateDataLite(best_u, best_v,dependency_parts, num_arcs, sentenceSize, &edge2Gain, &edge2Loss, &part2prob, scores,
-				&edge2LostEdges, &edge2LostParts, &E, &edge2parts, predicted_output, &part2val);
+		updateDataLite(best_u, best_v,dependency_parts, num_arcs, sentenceSize, scores,
+				&edge2LostEdges, &edge2LostParts, &E, &edge2parts, predicted_output);
 		leftSide.push_back(best_v);
 		for (int j = 0; j < rightSide.size(); j++) {
 			int v = rightSide[j];
