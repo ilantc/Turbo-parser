@@ -1167,7 +1167,7 @@ void calcLoss(int r, const vector<double> &scores, vector<vector<int> > &edge2pa
 		if (part2prob[part_r] == 0.0) {
 			gainedParts2remove.push_back(part_index);
 		} else {
-			gain += (*part2val)[part_r] / edge_prob;
+			gain += ((1 - edge_prob) * (*part2val)[part_r]) / edge_prob;
 			if (printIlan) {
 				cout << ", " << (*dependency_parts)[part_r]->toStr() << " = " << (*part2val)[part_r] / edge_prob;
 			}
