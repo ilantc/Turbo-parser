@@ -1156,8 +1156,8 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 
 void calcLoss(int r, const vector<double> &scores, vector<vector<int> > &edge2parts, const vector<double> &part2prob, vector<vector<int> > *edge2LostEdges,
 		vector<vector<int> > *edge2LostParts, double *val, const vector<double> *part2val, bool printIlan, DependencyParts *dependency_parts, double beta) {
-	double gain = scores[r];
 	double edge_prob = part2prob[r];
+	double gain = scores[r] * (1 - edge_prob);
 	if (printIlan) {
 		cout << "parts gained:\n" << (*dependency_parts)[r]->toStr() << " = " << gain;
 	}
