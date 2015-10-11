@@ -32,6 +32,7 @@ DECLARE_bool(evaluate);
 DECLARE_string(train_algorithm);
 DECLARE_bool(only_supported_features);
 DECLARE_bool(use_averaging);
+DECLARE_bool(improveLocal);
 DECLARE_string(ilan_decoding);
 DECLARE_double(alpha);
 DECLARE_double(beta);
@@ -74,6 +75,7 @@ class Options {
   string ilan_decoding() { return ilan_decoding_; }
   double alpha() { return alpha_; }
   double beta() { return beta_; }
+  bool improveLocal() { return improveLocal_; }
   bool only_supported_features() { return only_supported_features_; }
   bool train() { return train_; }
   bool test() { return test_; }
@@ -125,6 +127,7 @@ class Options {
   string ilan_decoding_;
   double alpha_;
   double beta_;
+  bool improveLocal_;
 };
 
 #endif /*OPTIONS_H_*/
