@@ -995,7 +995,8 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 
 void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, int sentenceSize, vector<int> *roots,
 		vector<double> *edge2Gain, vector<double> *edge2Loss, vector<double> *part2prob, const vector<double> &scores,
-		vector<vector<int> > *edge2LostEdges, vector<vector<int> > *edge2LostParts, vector<vector<int> > *E, vector<vector<int> > *subTrees, vector<vector<int> > *edge2parts, vector<double> *predicted_output, vector<double> *part2val, double alpha) {
+		vector<vector<int> > *edge2LostEdges, vector<vector<int> > *edge2LostParts, vector<vector<int> > *E, vector<vector<int> > *subTrees,
+		vector<vector<int> > *edge2parts, vector<double> *predicted_output, vector<double> *part2val, double alpha, vector<int> heads) {
 
 
 	double eps = 0.00001;
@@ -1075,8 +1076,13 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 	for (int j = 0; j < vSubTree.size(); j++) {
 		int currNode = vSubTree[j];
 		(*roots)[currNode] = uRoot;
-		(*subTrees)[uRoot].push_back(currNode);
 	}
+	int currNode = u;
+	while (currNode != uRoot) {
+		(*subTrees)[currNode].insert((*subTrees)[currNode].end(), vSubTree.begin(),vSubTree.end());
+		currNode = heads[currNode];
+	}
+	(*subTrees)[uRoot].insert((*subTrees)[uRoot].end(), vSubTree.begin(),vSubTree.end());
 
 	// update edge2LostEdges
 	for (int j = 0; j < vSubTree.size(); j++) {
@@ -1222,8 +1228,8 @@ void calcLoss(int r, const vector<double> &scores, vector<vector<int> > &edge2pa
 	(*val) = (beta * loss) - ((1 - beta) * gain);
 }
 
-double calcEdgeContribution(int r, vector<double> *predicted_output, const vector<vector<int> >  edge2parts,
-		const vector<double> &scores, DependencyParts *dependency_parts, vector<vector<int> > *E) {
+double calcEdgeContribution(const int r, const vector<double> *predicted_output, const vector<vector<int> >  edge2parts,
+		const vector<double> &scores,const DependencyParts *dependency_parts,const vector<vector<int> > *E) {
 	double contribution = scores[r];
 	for (int partIndex = 0; partIndex < edge2parts[r].size(); partIndex++) {
 		int currPartIndex = edge2parts[r][partIndex];
@@ -1266,8 +1272,8 @@ double calcEdgeContribution(int r, vector<double> *predicted_output, const vecto
 	return contribution;
 }
 
-double calc2EdgesContribution(int r1, int r2, vector<double> *predicted_output, const vector<vector<int> >  edge2parts,
-		const vector<double> &scores, DependencyParts *dependency_parts, vector<vector<int> > *E) {
+double calc2EdgesContribution(const int r1,const int r2,const vector<double> *predicted_output, const vector<vector<int> >  edge2parts,
+		const vector<double> &scores,const DependencyParts *dependency_parts,const vector<vector<int> > *E) {
 	double contribution = scores[r1] + scores[r2];
 	double sharedPartsVal = 0.0;
 	for (int partIndex = 0; partIndex < edge2parts[r1].size(); partIndex++) {
@@ -1357,15 +1363,31 @@ double calc2EdgesContribution(int r1, int r2, vector<double> *predicted_output, 
 	return contribution - sharedPartsVal;
 }
 
-void toggleEdge(int r, vector<double> *predicted_output, const vector<vector<int> >  edge2parts,
-		DependencyParts *dependency_parts, vector<vector<int> > *E, bool wasAdded) {
-	int newVal = 0.0;
+void toggleEdge(const int r, vector<double> *predicted_output, const vector<vector<int> >  edge2parts,
+		const DependencyParts *dependency_parts,const vector<vector<int> > *E, bool wasAdded) {
+	double newVal = 0.0;
 	if (wasAdded) {
 		newVal = 1.0;
+	}
+	if (r < 0) {
+		LOG(ERROR) << "r < 0: " << r << endl;
+		CHECK(false);
+	}
+	if (r >= (*predicted_output).size() ) {
+		LOG(ERROR) << "r > size: " << r << "/" << (*predicted_output).size() << endl;
+		CHECK(false);
 	}
 	(*predicted_output)[r] = newVal;
 	for (int partIndex = 0; partIndex < edge2parts[r].size(); partIndex++) {
 		int currPartIndex = edge2parts[r][partIndex];
+		if (currPartIndex < 0) {
+			LOG(ERROR) << "currPartIndex < 0: " << currPartIndex << endl;
+			CHECK(false);
+		}
+		if (currPartIndex >= (*predicted_output).size() ) {
+			LOG(ERROR) << "currPartIndex > size: " << currPartIndex << "/" << (*predicted_output).size() << endl;
+			CHECK(false);
+		}
 		if (! wasAdded) {
 			(*predicted_output)[currPartIndex] = newVal;
 			continue;
@@ -1408,37 +1430,28 @@ void toggleEdge(int r, vector<double> *predicted_output, const vector<vector<int
 	}
 }
 
-vector<vector<int> > calcSubTrees(vector<int> heads) {
-	vector<vector<int> > subTrees;
-	subTrees.push_back(vector<int>());
-	subTrees[0].push_back(0);
-	vector<bool> nonLeaves(heads.size());
-	for (int i=1;i < heads.size(); i++) {
-		nonLeaves[heads[i]] = true;
-		subTrees.push_back(vector<int>());
-		subTrees[i].push_back(i);
+void calcSubTrees(vector<int> heads, vector<vector<int> > *subTrees) {
+	for (int i=0; i < (*subTrees).size(); i++) {
+		(*subTrees)[i].clear();
 	}
-	for (int i=1;i < nonLeaves.size(); i++) {
-		if (nonLeaves[i]) continue;
-		vector<int> currentNodes;
-		currentNodes.push_back(i);
+	(*subTrees)[0].push_back(0);
+	for (int i=1;i < heads.size(); i++) {
+		(*subTrees)[i].push_back(i);
 		int currentNode = heads[i];
 		while (currentNode != 0) {
-			subTrees[currentNode].insert(subTrees[currentNode].end(),currentNodes.begin(),currentNodes.end());
-			currentNodes.push_back(currentNode);
+			(*subTrees)[currentNode].push_back(i);
 			currentNode = heads[currentNode];
 		}
-		subTrees[0].insert(subTrees[0].end(),currentNodes.begin(),currentNodes.end());
+		(*subTrees)[0].push_back(i);
 	}
-	return subTrees;
 }
 
 void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees,const vector<vector<int> >  edge2parts,
-		const vector<double> &scores, DependencyParts *dependency_parts, int sentenceSize, int numArcs, vector<vector<int> > *E, vector<int> heads) {
+		const vector<double> &scores, const DependencyParts *dependency_parts, const int sentenceSize, const int numArcs, const vector<vector<int> > *E, vector<int> heads) {
 
 	bool improved = true;
 	int nimprovements = 0;
-	subTrees = calcSubTrees(heads);
+	calcSubTrees(heads, &subTrees);
 	while (improved && nimprovements < 5) {
 		improved = false;
 		nimprovements++;
@@ -1489,13 +1502,22 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 				} else {
 					uv_vw_contribution = calc2EdgesContribution(uv_r, vw_r, predicted_output, edge2parts,scores, dependency_parts, E);
 				}
-				(*predicted_output)[uv_r] = 0.0;
+				if (uv_r >= 0) {
+					(*predicted_output)[uv_r] = 0.0;
+				}
+				if (vw_r >= 0) {
+					(*predicted_output)[vw_r] = 0.0;
+				}
 				(*predicted_output)[vw_r] = 0.0;
 				(*predicted_output)[uw_r] = 1.0;
 				(*predicted_output)[xv_r] = 1.0;
 				double uw_xv_contribution = calc2EdgesContribution(uw_r, xv_r, predicted_output, edge2parts,scores, dependency_parts, E);
-				(*predicted_output)[uv_r] = 1.0;
-				(*predicted_output)[vw_r] = 1.0;
+				if (uv_r >= 0) {
+					(*predicted_output)[uv_r] = 1.0;
+				}
+				if (vw_r >= 0) {
+					(*predicted_output)[vw_r] = 1.0;
+				}
 				(*predicted_output)[uw_r] = 0.0;
 				(*predicted_output)[xv_r] = 0.0;
 				double gain = uw_xv_contribution - uv_vw_contribution;
@@ -1516,11 +1538,21 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 				// find x-> v 's r
 				int xv_r = (*E)[x][v];
 				if (xv_r < 0) continue;
-				double uv_contribution = calcEdgeContribution(uv_r, predicted_output, edge2parts,scores, dependency_parts, E);
-				(*predicted_output)[uv_r] = 0.0;
+				double uv_contribution;
+				if (uv_r < 0) {
+					uv_contribution = 0.0;
+				}
+				else {
+					uv_contribution = calcEdgeContribution(uv_r, predicted_output, edge2parts,scores, dependency_parts, E);
+				}
+				if (uv_r >= 0) {
+					(*predicted_output)[uv_r] = 0.0;
+				}
 				(*predicted_output)[xv_r] = 1.0;
 				double xv_contribution = calcEdgeContribution(xv_r, predicted_output, edge2parts,scores, dependency_parts, E);
-				(*predicted_output)[uv_r] = 1.0;
+				if (uv_r >= 0) {
+					(*predicted_output)[uv_r] = 1.0;
+				}
 				(*predicted_output)[xv_r] = 0.0;
 				double gain = xv_contribution - uv_contribution;
 				if (gain > bestImprovement) {
@@ -1551,9 +1583,13 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 				heads[best_w] = bestu;
 				toggleEdge((*E)[bestu][best_w], predicted_output, edge2parts, dependency_parts, E, true);
 			}
-			subTrees = calcSubTrees(heads);
+			calcSubTrees(heads, &subTrees);
 		}
 	}
+	for (int i=0; i < subTrees.size(); i++) {
+		subTrees[i].clear();
+	}
+	subTrees.clear();
 }
 
 void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
@@ -1642,7 +1678,7 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 		}
 		heads[best_v] = best_u;
 		updateData(best_u, best_v,dependency_parts, num_arcs, sentenceSize, &roots, &edge2Gain, &edge2Loss, &part2prob, scores,
-				&edge2LostEdges, &edge2LostParts, &E, &subTrees, &edge2parts, predicted_output, &part2val,alpha);
+				&edge2LostEdges, &edge2LostParts, &E, &subTrees, &edge2parts, predicted_output, &part2val,alpha, heads);
 		if (printIlan) {
 			LOG(INFO) << "\n\nafter update data";
 			printAll(dependency_parts, edge2LostEdges, E, part2prob, roots, edge2parts, scores);
