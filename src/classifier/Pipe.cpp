@@ -369,6 +369,11 @@ void Pipe::MakeSupportedParameters() {
   LOG(INFO) << "Number of Features: " << parameters_->Size();
 }
 
+bool getTrue() {
+	cout << endl;
+	return true;
+}
+
 void Pipe::TrainEpoch(int epoch) {
   Instance *instance;
   Parts *parts = CreateParts();
@@ -393,9 +398,13 @@ void Pipe::TrainEpoch(int epoch) {
   dictionary_->StopGrowth();
   bool ilansPrints = false;
   for (int i = 0; i < instances_.size(); i++) {
+
+	ilansPrints = false;
 	bool ilansP = false;
-	if ((epoch == 2) && (i == 6)) {
-		ilansP = true;
+//	if ((epoch == 4) && (i == 24123)) {
+	if ((epoch == 0) && (i == 2)) {
+		ilansP = getTrue();
+		ilansPrints = true;
 	}
 	ilansPrints && cout << "iter " << i << " out of " << instances_.size() << endl;
     int t = num_instances * epoch + i;

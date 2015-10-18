@@ -1247,7 +1247,7 @@ double calcEdgeContribution(const int r, const vector<double> *predicted_output,
 				if (r2 == r) {
 					r2 = (*E)[h][s];
 				}
-				if ((*predicted_output)[r2] == 1.0) {
+				if ((*predicted_output)[r2] == 1) {
 					contribution += scores[currPartIndex];
 				}
 				break;
@@ -1260,7 +1260,7 @@ double calcEdgeContribution(const int r, const vector<double> *predicted_output,
 				if (r2 == r) {
 					r2 = (*E)[h][m];
 				}
-				if ((*predicted_output)[r2] == 1.0) {
+				if ((*predicted_output)[r2] == 1) {
 					contribution += scores[currPartIndex];
 				}
 				break;
@@ -1276,6 +1276,9 @@ double calc2EdgesContribution(const int r1,const int r2,const vector<double> *pr
 		const vector<double> &scores,const DependencyParts *dependency_parts,const vector<vector<int> > *E) {
 	double contribution = scores[r1] + scores[r2];
 	double sharedPartsVal = 0.0;
+//	for (int r=0; r < (*predicted_output).size(); r++) {
+//		cout << r << ", " << scores[r] << ", " << (*predicted_output)[r] << endl;
+//	}
 	for (int partIndex = 0; partIndex < edge2parts[r1].size(); partIndex++) {
 		int currPartIndex = edge2parts[r1][partIndex];
 		int h,m,s,g,r3;
@@ -1295,7 +1298,8 @@ double calc2EdgesContribution(const int r1,const int r2,const vector<double> *pr
 				if (r3 == r2) {
 					sharedPartsVal += scores[currPartIndex];
 				}
-				if ((*predicted_output)[r3] == 1.0) {
+//				cout << "r3 = " << r3 << ", out[r3] = " << (*predicted_output)[r3] << endl;
+				if ((*predicted_output)[r3] == 1) {
 					contribution += scores[currPartIndex];
 				}
 				break;
@@ -1311,7 +1315,8 @@ double calc2EdgesContribution(const int r1,const int r2,const vector<double> *pr
 				if (r3 == r2) {
 					sharedPartsVal += scores[currPartIndex];
 				}
-				if ((*predicted_output)[r3] == 1.0) {
+//				cout << "r3 = " << r3 << ", out[r3] = " << (*predicted_output)[r3] << endl;
+				if ((*predicted_output)[r3] == 1) {
 					contribution += scores[currPartIndex];
 				}
 				break;
@@ -1337,7 +1342,8 @@ double calc2EdgesContribution(const int r1,const int r2,const vector<double> *pr
 				if (r3 == r2) {
 					r3 = (*E)[h][s];
 				}
-				if ((*predicted_output)[r3] == 1.0) {
+//				cout << "r3 = " << r3 << ", out[r3] = " << (*predicted_output)[r3] << endl;
+				if ((*predicted_output)[r3] == 1) {
 					contribution += scores[currPartIndex];
 				}
 				break;
@@ -1350,7 +1356,8 @@ double calc2EdgesContribution(const int r1,const int r2,const vector<double> *pr
 				if (r3 == r2) {
 					r3 = (*E)[h][m];
 				}
-				if ((*predicted_output)[r3] == 1.0) {
+//				cout << "r3 = " << r3 << ", out[r3] = " << (*predicted_output)[r3] << endl;
+				if ((*predicted_output)[r3] == 1) {
 					contribution += scores[currPartIndex];
 				}
 				break;
@@ -1450,8 +1457,20 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 		const vector<double> &scores, const DependencyParts *dependency_parts, const int sentenceSize, const int numArcs, const vector<vector<int> > *E, vector<int> heads) {
 
 	bool improved = true;
+	bool verbose = false;
 	int nimprovements = 0;
 	calcSubTrees(heads, &subTrees);
+	if (verbose) {
+		for (int r=1; r < heads.size(); r++) {
+			cout << "(" << heads[r] << "," << r << "), ";
+		}
+		cout << endl;
+		for (int r=0; r < (*predicted_output).size(); r++) {
+			cout << r << ", " << scores[r] << ", " << (*predicted_output)[r] << endl;
+		}
+	}
+
+
 	while (improved && nimprovements < 5) {
 		improved = false;
 		nimprovements++;
@@ -1491,8 +1510,12 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 				if (uw_r < 0) {
 					continue;
 				}
+				verbose && cout << "trying (u,v,x,w) = (" << u << "," << v << "," << x << "," << w << ")" << endl;
 				int vw_r = (*E)[v][w];
 				double uv_vw_contribution;
+				if (v == 3 && u == 0 && x == 1 && w == 1) {
+					cout << "";
+				}
 				if (vw_r < 0 && uv_r < 0) {
 					uv_vw_contribution = 0.0;
 				} else if (vw_r < 0) {
@@ -1502,23 +1525,32 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 				} else {
 					uv_vw_contribution = calc2EdgesContribution(uv_r, vw_r, predicted_output, edge2parts,scores, dependency_parts, E);
 				}
+				verbose && cout << "uv_r = " << uv_r << ", vw_r = " << vw_r << ", uv_vw_contribution = " << uv_vw_contribution << endl;
 				if (uv_r >= 0) {
+					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 0" << endl;
 					(*predicted_output)[uv_r] = 0.0;
 				}
 				if (vw_r >= 0) {
+					verbose && cout << "vw_r: setting out[" << vw_r << "] to be 0" << endl;
 					(*predicted_output)[vw_r] = 0.0;
 				}
-				(*predicted_output)[vw_r] = 0.0;
+				verbose && cout << "uw_r: setting out[" << uw_r << "] to be 1" << endl;
 				(*predicted_output)[uw_r] = 1.0;
+				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 1" << endl;
 				(*predicted_output)[xv_r] = 1.0;
 				double uw_xv_contribution = calc2EdgesContribution(uw_r, xv_r, predicted_output, edge2parts,scores, dependency_parts, E);
+				verbose && cout << "uw_r = " << uw_r << ", xv_r = " << xv_r << ", uw_xv_contribution = " << uw_xv_contribution << endl;
 				if (uv_r >= 0) {
+					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 1" << endl;
 					(*predicted_output)[uv_r] = 1.0;
 				}
 				if (vw_r >= 0) {
+					verbose && cout << "vw_r: setting out[" << vw_r << "] to be 1" << endl;
 					(*predicted_output)[vw_r] = 1.0;
 				}
+				verbose && cout << "uw_r: setting out[" << uw_r << "] to be 0" << endl;
 				(*predicted_output)[uw_r] = 0.0;
+				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 0" << endl;
 				(*predicted_output)[xv_r] = 0.0;
 				double gain = uw_xv_contribution - uv_vw_contribution;
 				if (gain > bestImprovement) {
@@ -1535,6 +1567,7 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 			// x -> v
 			for (int x = 0; x < sentenceSize; x++) {
 				if (checkedHeads[x]) continue;
+				if (x == u) continue;
 				// find x-> v 's r
 				int xv_r = (*E)[x][v];
 				if (xv_r < 0) continue;
@@ -1569,11 +1602,15 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 //				<< ", isWithinSubTree=" << isWithinSubTree << ", improvementVal=" << bestImprovement << ", nimprovements=" << nimprovements << endl;;
 		if (bestImprovement > 0.0) {
 			improved = true;
+			double treeVal = 0.0;
+			for (int r=0; r < (*predicted_output).size(); r++) {
+				treeVal += (scores[r] * (*predicted_output)[r]);
+			}
 			// remove edges
-			if ((*E)[bestu][bestv] > 0) {
+			if ((*E)[bestu][bestv] >= 0) {
 				toggleEdge((*E)[bestu][bestv], predicted_output, edge2parts, dependency_parts, E, false);
 			}
-			if (isWithinSubTree && (*E)[bestv][best_w] > 0) {
+			if (isWithinSubTree && (*E)[bestv][best_w] >= 0) {
 				toggleEdge((*E)[bestv][best_w], predicted_output, edge2parts, dependency_parts, E, false);
 			}
 			//add edges
@@ -1582,6 +1619,13 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 			if (isWithinSubTree) {
 				heads[best_w] = bestu;
 				toggleEdge((*E)[bestu][best_w], predicted_output, edge2parts, dependency_parts, E, true);
+			}
+			double newTreeVal = 0.0;
+			for (int r=0; r < (*predicted_output).size(); r++) {
+				newTreeVal += (scores[r] * (*predicted_output)[r]);
+			}
+			if (abs((newTreeVal - treeVal) - bestImprovement) > 0.00001) {
+				cout << "bug!, old treeVal = " << treeVal << ", newTreeVal = " << newTreeVal << ", improvement = " << bestImprovement << endl;
 			}
 			calcSubTrees(heads, &subTrees);
 		}
