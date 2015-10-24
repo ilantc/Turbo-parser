@@ -841,7 +841,7 @@ void initDataStructures(DependencyParts *dependency_parts, int offset_arcs, int 
 					(*edge2LostParts)[r1].push_back(currPartIndex);
 				}
 			}
-			for (int u2 = 0; u2 < sentenceSize; u2 ++) {
+			for (int u2 = 0; u2 < sentenceSize; u2++) {
 				if (u2 == u1) continue;
 				r2 = dependency_parts->FindArc(u2,v1);
 				if (r2 > -1) {
@@ -1644,6 +1644,9 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 	DependencyParts *dependency_parts = static_cast<DependencyParts*>(parts);
 	DependencyInstanceNumeric* sentence = static_cast<DependencyInstanceNumeric*>(instance);
 	int sentenceSize = sentence->size();
+	if (100 == sentenceSize) {
+		printIlan = true;
+	}
 	double alpha = pipe_->GetDependencyOptions()->alpha();
 	double beta = pipe_->GetDependencyOptions()->beta();
 	int offset_arcs, num_arcs;
