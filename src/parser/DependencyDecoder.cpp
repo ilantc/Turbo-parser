@@ -931,7 +931,7 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 
 		// delete E entry
 		(*E)[lost_u][lost_v] = -1;
-		(*part2prob)[r1] = 0.0;
+		(*part2prob)[r1] = -1.0;
 
 		// remove all parts that need to be removed
 		vector<int> lostPartsIndices = (*edge2parts)[r1];
@@ -941,7 +941,7 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 			DependencyPartGrandpar *lostGP;
 			int currPartIndex = lostPartsIndices[j];
 			Part *currPart = (*dependency_parts)[currPartIndex];
-			(*part2prob)[currPartIndex] = 0.0;
+			(*part2prob)[currPartIndex] = -1.0;
 			(*part2val)[currPartIndex] = 0.0;
 			switch (currPart->type()) {
 				case DEPENDENCYPART_SIBL:
@@ -1023,7 +1023,7 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 
 		// delete E entry
 		(*E)[lost_u][lost_v] = -1;
-		(*part2prob)[r1] = 0.0;
+		(*part2prob)[r1] = -1.0;
 
 		// remove all parts that need to be removed
 		vector<int> lostPartsIndices = (*edge2parts)[r1];
@@ -1033,7 +1033,7 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 			DependencyPartGrandpar *lostGP;
 			int currPartIndex = lostPartsIndices[j];
 			Part *currPart = (*dependency_parts)[currPartIndex];
-			(*part2prob)[currPartIndex] = 0.0;
+			(*part2prob)[currPartIndex] = -1.0;
 			(*part2val)[currPartIndex] = 0.0;
 			switch (currPart->type()) {
 				case DEPENDENCYPART_SIBL:
@@ -1171,7 +1171,7 @@ void calcLoss(int r, const vector<double> &scores, vector<vector<int> > &edge2pa
 	vector<int> gainedParts2remove;
 	for (int part_index = 0; part_index < edge2parts[r].size(); part_index++) {
 		int part_r = edge2parts[r][part_index];
-		if (part2prob[part_r] == 0.0) {
+		if (part2prob[part_r] < -0.5) {
 			gainedParts2remove.push_back(part_index);
 		} else {
 			gain += (*part2val)[part_r] / edge_prob;
@@ -1191,7 +1191,7 @@ void calcLoss(int r, const vector<double> &scores, vector<vector<int> > &edge2pa
 	}
 	for (int lost_arc_index = 0; lost_arc_index < (*edge2LostEdges)[r].size(); lost_arc_index++) {
 		int lost_arc_r = (*edge2LostEdges)[r][lost_arc_index];
-		if (part2prob[lost_arc_r] == 0.0) {
+		if (part2prob[lost_arc_r] < -0.5) {
 			arcs2remove.push_back(lost_arc_index);
 		} else {
 			loss += (*part2val)[lost_arc_r];
@@ -1209,7 +1209,7 @@ void calcLoss(int r, const vector<double> &scores, vector<vector<int> > &edge2pa
 	vector<int> parts2remove;
 	for (int lost_part_index = 0; lost_part_index < (*edge2LostParts)[r].size(); lost_part_index++ ) {
 		int lost_part_r = (*edge2LostParts)[r][lost_part_index];
-		if (part2prob[lost_part_r] == 0.0) {
+		if (part2prob[lost_part_r] == -0.5) {
 			parts2remove.push_back(lost_part_index);
 		} else {
 			loss += (*part2val)[lost_part_r];
@@ -1644,9 +1644,9 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 	DependencyParts *dependency_parts = static_cast<DependencyParts*>(parts);
 	DependencyInstanceNumeric* sentence = static_cast<DependencyInstanceNumeric*>(instance);
 	int sentenceSize = sentence->size();
-	if (100 == sentenceSize) {
-		printIlan = true;
-	}
+//	if (100 == sentenceSize) {
+//		printIlan = true;
+//	}
 	double alpha = pipe_->GetDependencyOptions()->alpha();
 	double beta = pipe_->GetDependencyOptions()->beta();
 	int offset_arcs, num_arcs;
