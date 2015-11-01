@@ -478,9 +478,9 @@ void Pipe::TrainEpoch(int epoch) {
       time_decoding += diff_ms(end_decoding, start_decoding);
 
       if (loss < 0.0) {
-        if (!NEARLY_EQ_TOL(loss, 0.0, 1e-9)) {
-          LOG(INFO) << "Warning: negative loss set to zero: " << loss;
-        }
+        //if (!NEARLY_EQ_TOL(loss, 0.0, 1e-9)) {
+        //  LOG(INFO) << "Warning: negative loss set to zero: " << loss;
+        //}
         loss = 0.0;
       }
       total_loss += loss;
