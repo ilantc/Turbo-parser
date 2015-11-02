@@ -1453,11 +1453,19 @@ void calcSubTrees(vector<int> heads, vector<vector<int> > *subTrees) {
 	}
 }
 
+void checkEq(vector<double> *predicted_output, const vector<double> predicted_output_copy) {
+	for (int i =0; i < (*predicted_output).size(); i++) {
+		if ((*predicted_output)[i] != predicted_output_copy[i]) {
+			cout << "wrong value for entry " << i << endl;
+		}
+	}
+}
+
 void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees,const vector<vector<int> >  edge2parts,
 		const vector<double> &scores, const DependencyParts *dependency_parts, const int sentenceSize, const int numArcs, const vector<vector<int> > *E, vector<int> heads) {
 
 	bool improved = true;
-	bool verbose = false;
+	bool verbose = true;
 	int nimprovements = 0;
 	calcSubTrees(heads, &subTrees);
 	if (verbose) {
@@ -1466,12 +1474,36 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 		}
 		cout << endl;
 		for (int r=0; r < (*predicted_output).size(); r++) {
-			cout << r << ", " << scores[r] << ", " << (*predicted_output)[r] << endl;
+			string partStr = "";
+			DependencyPartArc *arc;
+			DependencyPartSibl *sibl;
+			DependencyPartGrandpar *GP;
+			Part *currPart = (*dependency_parts)[r];
+			switch (currPart->type()) {
+				case DEPENDENCYPART_SIBL:
+					sibl = static_cast<DependencyPartSibl*>(currPart);
+					partStr = sibl->toStr();
+					break;
+				case DEPENDENCYPART_GRANDPAR:
+					GP = static_cast<DependencyPartGrandpar*>(currPart);
+					partStr = GP->toStr();
+					break;
+				case DEPENDENCYPART_ARC:
+					arc = static_cast<DependencyPartArc*>(currPart);
+					partStr = arc->toStr();
+					break;
+				default:
+					LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+					CHECK(false);
+			}
+			cout << r << ", " << scores[r] << ", " << (*predicted_output)[r] << "," << partStr << endl;
 		}
 	}
 
 
 	while (improved && nimprovements < 5) {
+		vector<double> predicted_output_copy;
+		predicted_output_copy = (*predicted_output);
 		improved = false;
 		nimprovements++;
 		double bestImprovement = 0.0;
@@ -1552,6 +1584,7 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 				(*predicted_output)[uw_r] = 0.0;
 				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 0" << endl;
 				(*predicted_output)[xv_r] = 0.0;
+				checkEq(predicted_output,predicted_output_copy);
 				double gain = uw_xv_contribution - uv_vw_contribution;
 				if (gain > bestImprovement) {
 					bestImprovement = gain;
@@ -1578,15 +1611,22 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 				else {
 					uv_contribution = calcEdgeContribution(uv_r, predicted_output, edge2parts,scores, dependency_parts, E);
 				}
+				verbose && cout << "uv_r = " << uv_r << ", uv_contribution = " << uv_contribution << endl;
 				if (uv_r >= 0) {
+					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 0" << endl;
 					(*predicted_output)[uv_r] = 0.0;
 				}
+				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 1" << endl;
 				(*predicted_output)[xv_r] = 1.0;
 				double xv_contribution = calcEdgeContribution(xv_r, predicted_output, edge2parts,scores, dependency_parts, E);
+				verbose && cout << "xv_r = " << xv_r << ", xv_contribution = " << xv_contribution << endl;
 				if (uv_r >= 0) {
+					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 1" << endl;
 					(*predicted_output)[uv_r] = 1.0;
 				}
+				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 0" << endl;
 				(*predicted_output)[xv_r] = 0.0;
+				checkEq(predicted_output,predicted_output_copy);
 				double gain = xv_contribution - uv_contribution;
 				if (gain > bestImprovement) {
 					bestImprovement = gain;
@@ -1598,8 +1638,8 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 				}
 			}
 		}
-//		cout << "bestu=" << bestu << ", bestv=" << bestv << ", bestx=" << best_x << ", bestw=" << best_w
-//				<< ", isWithinSubTree=" << isWithinSubTree << ", improvementVal=" << bestImprovement << ", nimprovements=" << nimprovements << endl;;
+		verbose && cout << "bestu=" << bestu << ", bestv=" << bestv << ", bestx=" << best_x << ", bestw=" << best_w
+				<< ", isWithinSubTree=" << isWithinSubTree << ", improvementVal=" << bestImprovement << ", nimprovements=" << nimprovements << endl;
 		if (bestImprovement > 0.0) {
 			improved = true;
 			double treeVal = 0.0;
