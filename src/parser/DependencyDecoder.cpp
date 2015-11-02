@@ -921,7 +921,7 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 	vector<int> lostEdgesIndices;
 	lostEdgesIndices = (*edge2LostEdges)[r];
 
-	(*E)[u][v] = -1;
+	(*E)[u][v] = -2;
 
 	for (int i= 0; i < lostEdgesIndices.size(); i++) {
 		int r1 = lostEdgesIndices[i];
@@ -953,7 +953,7 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 					if (r2 == r1) {
 						r2 = (*E)[h][s];
 					}
-					if (r2 == -1) continue;
+					if (r2 < 0) continue;
 					deleteFromVec(edge2parts,r2,currPartIndex);
 					break;
 				case DEPENDENCYPART_GRANDPAR:
@@ -965,7 +965,7 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 					if (r2 == r1) {
 						r2 = (*E)[h][m];
 					}
-					if (r2 == -1) continue;
+					if (r2 < 0) continue;
 					deleteFromVec(edge2parts,r2,currPartIndex);
 
 					break;
@@ -986,8 +986,37 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 		int r2 = (*edge2parts)[r][j];
 		(*part2prob)[r2] /= p;
 		(*part2val)[r2] /= p;
-		if (abs((*part2prob)[r2] - 1) < eps) {
-			(*predicted_output)[r2] = 1.0;
+		// check if part is complete
+		int r3,r4,h,m,s,g,k;
+		DependencyPartSibl *sibl;
+		DependencyPartGrandpar *GP;
+		Part *currPart = (*dependency_parts)[r2];
+		switch (currPart->type()) {
+			case DEPENDENCYPART_SIBL:
+				sibl = static_cast<DependencyPartSibl*>(currPart);
+				h = sibl->head();
+				m = sibl->modifier();
+				s = sibl->sibling();
+				r3 = (*E)[h][m];
+				r4 = (*E)[h][s];
+				if ((r3 == -2) && (r4 == -2)) {
+					(*predicted_output)[r2] = 1.0;
+				}
+				break;
+			case DEPENDENCYPART_GRANDPAR:
+				GP = static_cast<DependencyPartGrandpar*>(currPart);
+				g = GP->grandparent();
+				h = GP->head();
+				m = GP->modifier();
+				r3 = (*E)[h][m];
+				r4 = (*E)[g][h];
+				if ((r3 == -2) && (r4 == -2)) {
+					(*predicted_output)[r2] = 1.0;
+				}
+				break;
+			default:
+				LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+				CHECK(false);
 		}
 	}
 	(*edge2parts)[r].clear();
@@ -1013,7 +1042,7 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 
 	vector<int> vSubTree = (*subTrees)[v];
 
-	(*E)[u][v] = -1;
+	(*E)[u][v] = -2;
 
 	for (int i= 0; i < lostEdgesIndices.size(); i++) {
 		int r1 = lostEdgesIndices[i];
@@ -1045,7 +1074,7 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 					if (r2 == r1) {
 						r2 = (*E)[h][s];
 					}
-					if (r2 == -1) continue;
+					if (r2 < 0) continue;
 					deleteFromVec(edge2parts,r2,currPartIndex);
 					break;
 				case DEPENDENCYPART_GRANDPAR:
@@ -1057,7 +1086,7 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 					if (r2 == r1) {
 						r2 = (*E)[h][m];
 					}
-					if (r2 == -1) continue;
+					if (r2 < 0) continue;
 					deleteFromVec(edge2parts,r2,currPartIndex);
 
 					break;
@@ -1154,8 +1183,37 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 		int r2 = (*edge2parts)[r][j];
 		(*part2prob)[r2] /= p;
 		(*part2val)[r2] /= p;
-		if (abs((*part2prob)[r2] - 1) < eps) {
-			(*predicted_output)[r2] = 1.0;
+		// check if part is complete
+		int r3,r4,h,m,s,g,k;
+		DependencyPartSibl *sibl;
+		DependencyPartGrandpar *GP;
+		Part *currPart = (*dependency_parts)[r2];
+		switch (currPart->type()) {
+			case DEPENDENCYPART_SIBL:
+				sibl = static_cast<DependencyPartSibl*>(currPart);
+				h = sibl->head();
+				m = sibl->modifier();
+				s = sibl->sibling();
+				r3 = (*E)[h][m];
+				r4 = (*E)[h][s];
+				if ((r3 == -2) && (r4 == -2)) {
+					(*predicted_output)[r2] = 1.0;
+				}
+				break;
+			case DEPENDENCYPART_GRANDPAR:
+				GP = static_cast<DependencyPartGrandpar*>(currPart);
+				g = GP->grandparent();
+				h = GP->head();
+				m = GP->modifier();
+				r3 = (*E)[h][m];
+				r4 = (*E)[g][h];
+				if ((r3 == -2) && (r4 == -2)) {
+					(*predicted_output)[r2] = 1.0;
+				}
+				break;
+			default:
+				LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+				CHECK(false);
 		}
 	}
 	(*edge2parts)[r].clear();
@@ -1465,7 +1523,7 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 		const vector<double> &scores, const DependencyParts *dependency_parts, const int sentenceSize, const int numArcs, const vector<vector<int> > *E, vector<int> heads) {
 
 	bool improved = true;
-	bool verbose = true;
+	bool verbose = false;
 	int nimprovements = 0;
 	calcSubTrees(heads, &subTrees);
 	if (verbose) {

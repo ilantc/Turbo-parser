@@ -31,3 +31,6 @@
 *.out
 *.app
 
+TurboParser
+src/parser/TurboParser
+
