@@ -921,7 +921,7 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 	vector<int> lostEdgesIndices;
 	lostEdgesIndices = (*edge2LostEdges)[r];
 
-	(*E)[u][v] = -1;
+	(*E)[u][v] = -2;
 
 	for (int i= 0; i < lostEdgesIndices.size(); i++) {
 		int r1 = lostEdgesIndices[i];
@@ -953,7 +953,7 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 					if (r2 == r1) {
 						r2 = (*E)[h][s];
 					}
-					if (r2 == -1) continue;
+					if (r2 < 0) continue;
 					deleteFromVec(edge2parts,r2,currPartIndex);
 					break;
 				case DEPENDENCYPART_GRANDPAR:
@@ -965,7 +965,7 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 					if (r2 == r1) {
 						r2 = (*E)[h][m];
 					}
-					if (r2 == -1) continue;
+					if (r2 < 0) continue;
 					deleteFromVec(edge2parts,r2,currPartIndex);
 
 					break;
@@ -986,8 +986,37 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 		int r2 = (*edge2parts)[r][j];
 		(*part2prob)[r2] /= p;
 		(*part2val)[r2] /= p;
-		if (abs((*part2prob)[r2] - 1) < eps) {
-			(*predicted_output)[r2] = 1.0;
+		// check if part is complete
+		int r3,r4,h,m,s,g,k;
+		DependencyPartSibl *sibl;
+		DependencyPartGrandpar *GP;
+		Part *currPart = (*dependency_parts)[r2];
+		switch (currPart->type()) {
+			case DEPENDENCYPART_SIBL:
+				sibl = static_cast<DependencyPartSibl*>(currPart);
+				h = sibl->head();
+				m = sibl->modifier();
+				s = sibl->sibling();
+				r3 = (*E)[h][m];
+				r4 = (*E)[h][s];
+				if ((r3 == -2) && (r4 == -2)) {
+					(*predicted_output)[r2] = 1.0;
+				}
+				break;
+			case DEPENDENCYPART_GRANDPAR:
+				GP = static_cast<DependencyPartGrandpar*>(currPart);
+				g = GP->grandparent();
+				h = GP->head();
+				m = GP->modifier();
+				r3 = (*E)[h][m];
+				r4 = (*E)[g][h];
+				if ((r3 == -2) && (r4 == -2)) {
+					(*predicted_output)[r2] = 1.0;
+				}
+				break;
+			default:
+				LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+				CHECK(false);
 		}
 	}
 	(*edge2parts)[r].clear();
@@ -1013,7 +1042,7 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 
 	vector<int> vSubTree = (*subTrees)[v];
 
-	(*E)[u][v] = -1;
+	(*E)[u][v] = -2;
 
 	for (int i= 0; i < lostEdgesIndices.size(); i++) {
 		int r1 = lostEdgesIndices[i];
@@ -1045,7 +1074,7 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 					if (r2 == r1) {
 						r2 = (*E)[h][s];
 					}
-					if (r2 == -1) continue;
+					if (r2 < 0) continue;
 					deleteFromVec(edge2parts,r2,currPartIndex);
 					break;
 				case DEPENDENCYPART_GRANDPAR:
@@ -1057,7 +1086,7 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 					if (r2 == r1) {
 						r2 = (*E)[h][m];
 					}
-					if (r2 == -1) continue;
+					if (r2 < 0) continue;
 					deleteFromVec(edge2parts,r2,currPartIndex);
 
 					break;
@@ -1154,8 +1183,37 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 		int r2 = (*edge2parts)[r][j];
 		(*part2prob)[r2] /= p;
 		(*part2val)[r2] /= p;
-		if (abs((*part2prob)[r2] - 1) < eps) {
-			(*predicted_output)[r2] = 1.0;
+		// check if part is complete
+		int r3,r4,h,m,s,g,k;
+		DependencyPartSibl *sibl;
+		DependencyPartGrandpar *GP;
+		Part *currPart = (*dependency_parts)[r2];
+		switch (currPart->type()) {
+			case DEPENDENCYPART_SIBL:
+				sibl = static_cast<DependencyPartSibl*>(currPart);
+				h = sibl->head();
+				m = sibl->modifier();
+				s = sibl->sibling();
+				r3 = (*E)[h][m];
+				r4 = (*E)[h][s];
+				if ((r3 == -2) && (r4 == -2)) {
+					(*predicted_output)[r2] = 1.0;
+				}
+				break;
+			case DEPENDENCYPART_GRANDPAR:
+				GP = static_cast<DependencyPartGrandpar*>(currPart);
+				g = GP->grandparent();
+				h = GP->head();
+				m = GP->modifier();
+				r3 = (*E)[h][m];
+				r4 = (*E)[g][h];
+				if ((r3 == -2) && (r4 == -2)) {
+					(*predicted_output)[r2] = 1.0;
+				}
+				break;
+			default:
+				LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+				CHECK(false);
 		}
 	}
 	(*edge2parts)[r].clear();
@@ -1453,6 +1511,14 @@ void calcSubTrees(vector<int> heads, vector<vector<int> > *subTrees) {
 	}
 }
 
+void checkEq(vector<double> *predicted_output, const vector<double> predicted_output_copy) {
+	for (int i =0; i < (*predicted_output).size(); i++) {
+		if ((*predicted_output)[i] != predicted_output_copy[i]) {
+			cout << "wrong value for entry " << i << endl;
+		}
+	}
+}
+
 void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees,const vector<vector<int> >  edge2parts,
 		const vector<double> &scores, const DependencyParts *dependency_parts, const int sentenceSize, const int numArcs, const vector<vector<int> > *E, vector<int> heads) {
 
@@ -1466,12 +1532,36 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 		}
 		cout << endl;
 		for (int r=0; r < (*predicted_output).size(); r++) {
-			cout << r << ", " << scores[r] << ", " << (*predicted_output)[r] << endl;
+			string partStr = "";
+			DependencyPartArc *arc;
+			DependencyPartSibl *sibl;
+			DependencyPartGrandpar *GP;
+			Part *currPart = (*dependency_parts)[r];
+			switch (currPart->type()) {
+				case DEPENDENCYPART_SIBL:
+					sibl = static_cast<DependencyPartSibl*>(currPart);
+					partStr = sibl->toStr();
+					break;
+				case DEPENDENCYPART_GRANDPAR:
+					GP = static_cast<DependencyPartGrandpar*>(currPart);
+					partStr = GP->toStr();
+					break;
+				case DEPENDENCYPART_ARC:
+					arc = static_cast<DependencyPartArc*>(currPart);
+					partStr = arc->toStr();
+					break;
+				default:
+					LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+					CHECK(false);
+			}
+			cout << r << ", " << scores[r] << ", " << (*predicted_output)[r] << "," << partStr << endl;
 		}
 	}
 
 
 	while (improved && nimprovements < 5) {
+		vector<double> predicted_output_copy;
+		predicted_output_copy = (*predicted_output);
 		improved = false;
 		nimprovements++;
 		double bestImprovement = 0.0;
@@ -1552,6 +1642,7 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 				(*predicted_output)[uw_r] = 0.0;
 				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 0" << endl;
 				(*predicted_output)[xv_r] = 0.0;
+				checkEq(predicted_output,predicted_output_copy);
 				double gain = uw_xv_contribution - uv_vw_contribution;
 				if (gain > bestImprovement) {
 					bestImprovement = gain;
@@ -1578,15 +1669,22 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 				else {
 					uv_contribution = calcEdgeContribution(uv_r, predicted_output, edge2parts,scores, dependency_parts, E);
 				}
+				verbose && cout << "uv_r = " << uv_r << ", uv_contribution = " << uv_contribution << endl;
 				if (uv_r >= 0) {
+					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 0" << endl;
 					(*predicted_output)[uv_r] = 0.0;
 				}
+				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 1" << endl;
 				(*predicted_output)[xv_r] = 1.0;
 				double xv_contribution = calcEdgeContribution(xv_r, predicted_output, edge2parts,scores, dependency_parts, E);
+				verbose && cout << "xv_r = " << xv_r << ", xv_contribution = " << xv_contribution << endl;
 				if (uv_r >= 0) {
+					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 1" << endl;
 					(*predicted_output)[uv_r] = 1.0;
 				}
+				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 0" << endl;
 				(*predicted_output)[xv_r] = 0.0;
+				checkEq(predicted_output,predicted_output_copy);
 				double gain = xv_contribution - uv_contribution;
 				if (gain > bestImprovement) {
 					bestImprovement = gain;
@@ -1598,8 +1696,8 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 				}
 			}
 		}
-//		cout << "bestu=" << bestu << ", bestv=" << bestv << ", bestx=" << best_x << ", bestw=" << best_w
-//				<< ", isWithinSubTree=" << isWithinSubTree << ", improvementVal=" << bestImprovement << ", nimprovements=" << nimprovements << endl;;
+		verbose && cout << "bestu=" << bestu << ", bestv=" << bestv << ", bestx=" << best_x << ", bestw=" << best_w
+				<< ", isWithinSubTree=" << isWithinSubTree << ", improvementVal=" << bestImprovement << ", nimprovements=" << nimprovements << endl;
 		if (bestImprovement > 0.0) {
 			improved = true;
 			double treeVal = 0.0;
