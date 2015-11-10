@@ -1854,11 +1854,13 @@ void DependencyDecoder::Decode2SidedMinLoss(Instance *instance, Parts *parts,
 
 	vector<double> edge2Gain, edge2Loss, part2prob, part2val;
 	vector<int> heads;
-	vector<vector<int> > edge2LostEdges, edge2LostParts, E, edge2parts;
+	vector<vector<int> > edge2LostEdges, edge2LostParts, E, edge2parts, ECopy, edge2partsCopy;
 
 
 	initDataStructures(dependency_parts, offset_arcs, num_arcs, sentenceSize, &edge2Gain, &edge2Loss, &part2prob, scores,
 			&edge2LostEdges, &edge2LostParts, &E, &edge2parts, &part2val,alpha,&heads);
+	edge2partsCopy = edge2parts;
+	ECopy = E;
 
 	// n * ( E + n )
 	vector<int> leftSide;
@@ -1905,6 +1907,7 @@ void DependencyDecoder::Decode2SidedMinLoss(Instance *instance, Parts *parts,
 		if (best_v == -1) {
 			return;
 		}
+		heads[best_v] = best_u;
 		updateDataLite(best_u, best_v,dependency_parts, num_arcs, sentenceSize, &edge2Gain, &edge2Loss, &part2prob, scores,
 				&edge2LostEdges, &edge2LostParts, &E, &edge2parts, predicted_output, &part2val);
 		leftSide.push_back(best_v);
@@ -1915,6 +1918,12 @@ void DependencyDecoder::Decode2SidedMinLoss(Instance *instance, Parts *parts,
 			}
 		}
 	}
+	if (pipe_->GetDependencyOptions()->improveLocal()) {
+		vector<vector<int> > subTrees;
+		subTrees.assign(sentenceSize,vector<int>());
+		improveLocal(predicted_output,subTrees,edge2partsCopy,scores, dependency_parts, sentenceSize, num_arcs, &ECopy, heads);
+	}
+
 }
 
 
