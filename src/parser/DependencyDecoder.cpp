@@ -1286,6 +1286,52 @@ void calcLoss(int r, const vector<double> &scores, vector<vector<int> > &edge2pa
 	(*val) = (beta * loss) - ((1 - beta) * gain);
 }
 
+//void calcPredictedOutput(const vector<int> heads, vector<double> *predicted_output, const vector<vector<int> >  edge2parts,
+//		const vector<double> &scores,const DependencyParts *dependency_parts,const vector<vector<int> > *E) {
+//	double contribution = 0.0;
+//	for (int )
+//	for (int partIndex = 0; partIndex < edge2parts[r].size(); partIndex++) {
+//		int currPartIndex = edge2parts[r][partIndex];
+//		int h,m,s,g,r2;
+//		DependencyPartSibl *lostSibl;
+//		DependencyPartGrandpar *lostGP;
+//		Part *currPart = (*dependency_parts)[currPartIndex];
+//		switch (currPart->type()) {
+//			case DEPENDENCYPART_SIBL:
+//				lostSibl = static_cast<DependencyPartSibl*>(currPart);
+//				h = lostSibl->head();
+//				m = lostSibl->modifier();
+//				s = lostSibl->sibling();
+//				r2 = (*E)[h][m];
+//				if (r2 == r) {
+//					r2 = (*E)[h][s];
+//				}
+//				if ((*predicted_output)[r2] == 1) {
+//					contribution += scores[currPartIndex];
+//				}
+//				break;
+//			case DEPENDENCYPART_GRANDPAR:
+//				lostGP = static_cast<DependencyPartGrandpar*>(currPart);
+//				g = lostGP->grandparent();
+//				h = lostGP->head();
+//				m = lostGP->modifier();
+//				r2 = (*E)[g][h];
+//				if (r2 == r) {
+//					r2 = (*E)[h][m];
+//				}
+//				if ((*predicted_output)[r2] == 1) {
+//					contribution += scores[currPartIndex];
+//				}
+//				break;
+//			default:
+//				LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+//				CHECK(false);
+//		}
+//	}
+//	return contribution;
+//}
+
+
 double calcEdgeContribution(const int r, const vector<double> *predicted_output, const vector<vector<int> >  edge2parts,
 		const vector<double> &scores,const DependencyParts *dependency_parts,const vector<vector<int> > *E) {
 	double contribution = scores[r];
@@ -1734,6 +1780,19 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 	subTrees.clear();
 }
 
+struct sol {
+	double lossVal;
+	int u;
+	int v;
+	int fromBeam;
+
+	sol(double val, int u_, int v_, int fromBeam_): lossVal(val), u(u_), v(v_), fromBeam(fromBeam_) {}
+
+	bool operator < (const sol& s) const {
+		return (lossVal < s.lossVal);
+	}
+};
+
 void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
                                           const vector<double> &scores,
                                           vector<double> *predicted_output) {
@@ -1742,9 +1801,6 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 	DependencyParts *dependency_parts = static_cast<DependencyParts*>(parts);
 	DependencyInstanceNumeric* sentence = static_cast<DependencyInstanceNumeric*>(instance);
 	int sentenceSize = sentence->size();
-//	if (100 == sentenceSize) {
-//		printIlan = true;
-//	}
 	double alpha = pipe_->GetDependencyOptions()->alpha();
 	double beta = pipe_->GetDependencyOptions()->beta();
 	int offset_arcs, num_arcs;
@@ -1754,11 +1810,39 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 	vector<double> edge2Gain, edge2Loss, part2prob, part2val;
 	vector<vector<int> > edge2LostEdges, edge2LostParts, E, subTrees, edge2parts, edge2partsCopy, ECopy;
 
+	// beam variables
+	int beamSize = 1;
+	vector<double> totalBeamVals;
+	vector<vector<int> > rootsBeam,headsBeam;
+	vector<vector<double> > part2probBeam, part2valBeam;
+	vector<vector<vector<int> > > edge2LostEdgesBeam, edge2LostPartsBeam, EBeam, subTreesBeam, edge2partsBeam;
+	vector<vector< double > > predicted_outputBeam;
+
+	vector<double> totalBeamValsTemp;
+	vector<vector<int> > rootsBeamTemp,headsBeamTemp;
+	vector<vector<double> > part2probBeamTemp, part2valBeamTemp;
+	vector<vector<vector<int> > > edge2LostEdgesBeamTemp, edge2LostPartsBeamTemp, EBeamTemp, subTreesBeamTemp, edge2partsBeamTemp;
+	vector<vector< double > > predicted_outputBeamTemp;
+
+
 	initDataStructures(dependency_parts, offset_arcs, num_arcs, sentenceSize, &edge2Gain, &edge2Loss, &part2prob, scores,
 			&edge2LostEdges, &edge2LostParts, &E, &edge2parts, &part2val, alpha, &heads);
 	initsecondaryDS(&roots, &subTrees, sentenceSize);
 	edge2partsCopy = edge2parts;
 	ECopy = E;
+	for (int beam = 0; beam < beamSize; beam++) {
+		predicted_outputBeam.push_back(*predicted_output);
+		rootsBeam.push_back(roots);
+		headsBeam.push_back(heads);
+		part2probBeam.push_back(part2prob);
+		part2valBeam.push_back(part2val);
+		edge2LostEdgesBeam.push_back(edge2LostEdges);
+		edge2LostPartsBeam.push_back(edge2LostParts);
+		EBeam.push_back(E);
+		subTreesBeam.push_back(subTrees);
+		edge2partsBeam.push_back(edge2parts);
+		totalBeamVals.push_back(0.0);
+	}
 
 	if (printIlan) {
 		printAll(dependency_parts, edge2LostEdges, E, part2prob, roots, edge2parts, scores);
@@ -1766,69 +1850,119 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 	}
 	// n * ( E + n )
 	for (int iter_num = 0; iter_num < sentenceSize - 1; iter_num++) {
-		int best_u = -1;
-		int best_v = -1;
-		double best_loss = INFINITY;
-		for (int v = 1; v < sentenceSize; v++) {
-			bool singleHead = true;
-			bool noHead = true;
-			int max_u = sentenceSize;
-//			if (iter_num == 0) max_u = 1;
+		vector < sol > sols;
+		for (int i=0; i < beamSize; i++) {
+			sols.push_back(sol(INFINITY, -1, -1, -1));
+		}
+		for (int beam = 0; beam < beamSize; beam++) {
+			for (int v = 1; v < sentenceSize; v++) {
+				bool singleHead = true;
+				bool noHead = true;
+				int max_u = sentenceSize;
+	//			if (iter_num == 0) max_u = 1;
 
-			for (int u = 0; u < max_u; u++) {
-				int r = E[u][v];
-				if (r < 0) continue;
-				if (noHead) {
-					noHead = false;
-				} else if (singleHead) {
-					singleHead = false;
-				}
-				double currLoss;
-				calcLoss(r, scores, edge2parts, part2prob, &edge2LostEdges, &edge2LostParts, &currLoss, &part2val,printIlan, dependency_parts, beta);
-				if (printIlan) {
-					LOG(INFO) << "(u,v)=" << u << "," << v << ", loss =" << currLoss  << endl;
-				}
-				if (currLoss < best_loss) {
-					best_loss = currLoss;
-					best_u = u;
-					best_v = v;
-				}
-			}
-//			if (singleHead and (! noHead) and (iter_num > 0)) {
-			if (singleHead and (! noHead)) {
-				best_v = v;
-				for (int u = 0; u <sentenceSize; u++) {
-					if (E[u][v] > -1) {
-						best_u = u;
-						break;
+				for (int u = 0; u < max_u; u++) {
+					int r = EBeam[beam][u][v];
+					if (r < 0) continue;
+					if (noHead) {
+						noHead = false;
+					} else if (singleHead) {
+						singleHead = false;
+					}
+					double currLoss;
+					calcLoss(r, scores, edge2partsBeam[beam], part2probBeam[beam], &edge2LostEdgesBeam[beam], &edge2LostPartsBeam[beam],
+							&currLoss, &part2valBeam[beam],printIlan, dependency_parts, beta);
+					if (printIlan) {
+						LOG(INFO) << "(u,v)=" << u << "," << v << ", loss =" << currLoss  << endl;
+					}
+					sol s = sol(totalBeamVals[beam] + currLoss, u, v, beam);
+					if (s < sols[beamSize - 1]) {
+						// add this sol to sols
+						int currBeam;
+						for (currBeam = beamSize - 1; currBeam > 0; currBeam--) {
+							if (s < sols[currBeam - 1]) {
+								sols[currBeam] = sols[currBeam - 1];
+							} else {
+								break;
+							}
+						}
+						sols[currBeam] = s;
 					}
 				}
-				break;
+				// TODO - handle single heads
+			}
+			if (printIlan) {
+				LOG(INFO) << "\n\nafter update data";
+				printAll(dependency_parts, edge2LostEdges, E, part2prob, roots, edge2parts, scores);
 			}
 		}
-		if (printIlan) {
-			LOG(INFO) << "\n\nchose (u,v)=" << best_u << "," << best_v << "), LostEdges=";
-			for (int r2 = 0; r2 < edge2LostEdges[E[best_u][best_v]].size(); r2++) {
-				DependencyPartArc *arc2 = static_cast<DependencyPartArc*>((*parts)[edge2LostEdges[E[best_u][best_v]][r2]]);
-				int h2 = arc2->head();
-				int m2 = arc2->modifier();
-				cout << "(" + SSTR(h2) + "," + SSTR(m2) + "), ";
+		for (int i =0; i < beamSize; i++) {
+			int fromBeam = sols[i].fromBeam;
+			bool noSol = false;
+			if (fromBeam == -1) {
+				fromBeam = i;
+				noSol = true;
 			}
-			cout << endl;
+			rootsBeamTemp.push_back(rootsBeam[fromBeam]);
+			headsBeamTemp.push_back(headsBeam[fromBeam]);
+			part2probBeamTemp.push_back(part2probBeam[fromBeam]);
+			part2valBeamTemp.push_back(part2valBeam[fromBeam]);
+			edge2LostEdgesBeamTemp.push_back(edge2LostEdgesBeam[fromBeam]);
+			edge2LostPartsBeamTemp.push_back(edge2LostPartsBeam[fromBeam]);
+			EBeamTemp.push_back(EBeam[fromBeam]);
+			subTreesBeamTemp.push_back(subTreesBeam[fromBeam]);
+			edge2partsBeamTemp.push_back(edge2partsBeam[fromBeam]);
+			totalBeamValsTemp.push_back(sols[i].lossVal);
+			predicted_outputBeamTemp.push_back(predicted_outputBeam[fromBeam]);
+			if (not noSol) {
+				headsBeamTemp[i][sols[i].v] = sols[i].u;
+				updateData(sols[i].u, sols[i].v,dependency_parts, num_arcs, sentenceSize, &rootsBeamTemp[i], &edge2Gain, &edge2Loss, &part2probBeamTemp[i], scores,
+									&edge2LostEdgesBeamTemp[i], &edge2LostPartsBeamTemp[i], &EBeamTemp[i], &subTreesBeamTemp[i], &edge2partsBeamTemp[i],
+									&predicted_outputBeamTemp[i], &part2valBeamTemp[i],alpha, headsBeamTemp[i]);
+			}
 		}
+		rootsBeam = rootsBeamTemp;
+		headsBeam = headsBeamTemp;
+		part2probBeam = part2probBeamTemp;
+		part2valBeam = part2valBeamTemp;
+		edge2LostEdgesBeam = edge2LostEdgesBeamTemp;
+		edge2LostPartsBeam = edge2LostPartsBeamTemp;
+		EBeam = EBeamTemp;
+		subTreesBeam = subTreesBeamTemp;
+		edge2partsBeam = edge2partsBeamTemp;
+		totalBeamVals = totalBeamValsTemp;
+		predicted_outputBeam = predicted_outputBeamTemp;
 
-
-		if (best_v == -1) {
-			break;
+		rootsBeamTemp.clear();
+		headsBeamTemp.clear();
+		part2probBeamTemp.clear();
+		part2valBeamTemp.clear();
+		edge2LostEdgesBeamTemp.clear();
+		edge2LostPartsBeamTemp.clear();
+		EBeamTemp.clear();
+		subTreesBeamTemp.clear();
+		edge2partsBeamTemp.clear();
+		totalBeamValsTemp.clear();
+		predicted_outputBeamTemp.clear();
+	}
+	// choose best tree
+	double bestVal = -1 * INFINITY;
+	int bestBeam = -1;
+	for (int beam = 0; beam < beamSize; beam++) {
+		double currVal = 0.0;
+		for (int r = 0; r < predicted_outputBeam[beam].size(); r++) {
+			currVal += predicted_outputBeam[beam][r] * scores[r];
 		}
-		heads[best_v] = best_u;
-		updateData(best_u, best_v,dependency_parts, num_arcs, sentenceSize, &roots, &edge2Gain, &edge2Loss, &part2prob, scores,
-				&edge2LostEdges, &edge2LostParts, &E, &subTrees, &edge2parts, predicted_output, &part2val,alpha, heads);
-		if (printIlan) {
-			LOG(INFO) << "\n\nafter update data";
-			printAll(dependency_parts, edge2LostEdges, E, part2prob, roots, edge2parts, scores);
+		if (currVal > bestVal) {
+			bestVal = currVal;
+			bestBeam = beam;
 		}
 	}
+	for (int r = 0; r < predicted_outputBeam[bestBeam].size(); r++) {
+		(*predicted_output)[r] = predicted_outputBeam[bestBeam][r];
+	}
+	subTrees = subTreesBeam[bestBeam];
+	heads = headsBeam[bestBeam];
 	if (pipe_->GetDependencyOptions()->improveLocal()) {
 		improveLocal(predicted_output,subTrees,edge2partsCopy,scores, dependency_parts, sentenceSize, num_arcs, &ECopy, heads);
 	}
