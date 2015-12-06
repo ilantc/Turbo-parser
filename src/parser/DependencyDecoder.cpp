@@ -1811,7 +1811,7 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 	vector<vector<int> > edge2LostEdges, edge2LostParts, E, subTrees, edge2parts, edge2partsCopy, ECopy;
 
 	// beam variables
-	int beamSize = 1;
+	int beamSize = 3;
 	vector<double> totalBeamVals;
 	vector<vector<int> > rootsBeam,headsBeam;
 	vector<vector<double> > part2probBeam, part2valBeam;
