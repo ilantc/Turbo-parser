@@ -1793,6 +1793,16 @@ struct sol {
 	}
 };
 
+int calcDistance(vector<int> heads1, vector<int> heads2) {
+	int distance = 0;
+	for (int i=0; i < heads1.size(); i++) {
+		if (heads1[i] != heads2[i]) {
+			distance++;
+		}
+	}
+	return distance;
+}
+
 void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
                                           const vector<double> &scores,
                                           vector<double> *predicted_output) {
@@ -1813,7 +1823,7 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 	// beam variables
 	int beamSize = 3;
 	vector<double> totalBeamVals;
-	vector<vector<int> > rootsBeam,headsBeam;
+	vector<vector<int> > rootsBeam,headsBeam, beamsDistance;
 	vector<vector<double> > part2probBeam, part2valBeam;
 	vector<vector<vector<int> > > edge2LostEdgesBeam, edge2LostPartsBeam, EBeam, subTreesBeam, edge2partsBeam;
 	vector<vector< double > > predicted_outputBeam;
@@ -1830,7 +1840,11 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 	initsecondaryDS(&roots, &subTrees, sentenceSize);
 	edge2partsCopy = edge2parts;
 	ECopy = E;
+
 	for (int beam = 0; beam < beamSize; beam++) {
+		vector< int> distances;
+		distances.assign(beamSize,0);
+		beamsDistance.push_back(distances);
 		predicted_outputBeam.push_back(*predicted_output);
 		rootsBeam.push_back(roots);
 		headsBeam.push_back(heads);
@@ -1854,6 +1868,7 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 		for (int i=0; i < beamSize; i++) {
 			sols.push_back(sol(INFINITY, -1, -1, -1));
 		}
+		vector <int> beamsWithNoSol;
 		for (int beam = 0; beam < beamSize; beam++) {
 			for (int v = 1; v < sentenceSize; v++) {
 				bool singleHead = true;
@@ -1877,8 +1892,42 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 					}
 					sol s = sol(totalBeamVals[beam] + currLoss, u, v, beam);
 					if (s < sols[beamSize - 1]) {
-						// add this sol to sols
 						int currBeam;
+						bool found = false;
+						// first check that this sol isnt already in sols
+						for (currBeam = beamSize - 1; currBeam >= 0; currBeam--) {
+							int currSolBeam = sols[currBeam].fromBeam;
+							if (currSolBeam < 0) continue;
+							if (	(beamsDistance[currSolBeam][beam] 	== 0) &&
+									(sols[currBeam].u 					== s.u) &&
+									(sols[currBeam].v 					== s.v)) {
+								found = true;
+								break;
+							}
+
+							if (beamsDistance[currSolBeam][beam] != 2) continue;
+							int otherU = sols[currBeam].u;
+							int otherV = sols[currBeam].v;
+							if (headsBeam[beam][otherV] != otherU) continue;
+							int thisU = s.u;
+							int thisV = s.v;
+							if (headsBeam[currSolBeam][thisV] != thisU) continue;
+							// we got here - we found an identical sol
+							found = true;
+							if (sols[currBeam] < s) break;
+							// push sol up
+							for (; currBeam > 0; currBeam--) {
+								if (s < sols[currBeam - 1]) {
+									sols[currBeam] = sols[currBeam - 1];
+								} else {
+									break;
+								}
+							}
+							sols[currBeam] = s;
+							break;
+						}
+						if (found) continue;
+						// add this sol to sols
 						for (currBeam = beamSize - 1; currBeam > 0; currBeam--) {
 							if (s < sols[currBeam - 1]) {
 								sols[currBeam] = sols[currBeam - 1];
@@ -1896,11 +1945,22 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 				printAll(dependency_parts, edge2LostEdges, E, part2prob, roots, edge2parts, scores);
 			}
 		}
+		vector <bool> foundBeans(beamSize);
+		for (int i =0; i < beamSize; i++) {
+			if (sols[i].fromBeam >= 0) {
+				foundBeans[sols[i].fromBeam] = true;
+			}
+		}
+		int unfounBeanIterator = 0;
 		for (int i =0; i < beamSize; i++) {
 			int fromBeam = sols[i].fromBeam;
 			bool noSol = false;
 			if (fromBeam == -1) {
-				fromBeam = i;
+				while (foundBeans[unfounBeanIterator]) {
+					unfounBeanIterator++;
+				}
+				foundBeans[unfounBeanIterator] = true;
+				fromBeam = unfounBeanIterator;
 				noSol = true;
 			}
 			rootsBeamTemp.push_back(rootsBeam[fromBeam]);
@@ -1944,6 +2004,13 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 		edge2partsBeamTemp.clear();
 		totalBeamValsTemp.clear();
 		predicted_outputBeamTemp.clear();
+		for (int beam1=0; beam1 < beamSize; beam1++) {
+			for (int beam2=beam1; beam2 < beamSize; beam2++) {
+				int dist = calcDistance(headsBeam[beam1],headsBeam[beam2]);
+				beamsDistance[beam1][beam2] = dist;
+				beamsDistance[beam2][beam1] = dist;
+			}
+		}
 	}
 	// choose best tree
 	double bestVal = -1 * INFINITY;
