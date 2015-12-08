@@ -33,3 +33,7 @@
 
 TurboParser
 src/parser/TurboParser
+TurboSemanticParser
+TurboTagger
+src/parser/TurboSemanticParser
+src/parser/TurboTagger
