@@ -814,7 +814,8 @@ void initDataStructures(DependencyParts *dependency_parts, int offset_arcs, int 
 	(*edge2LostEdges).assign(num_arcs,vector<int>());
 	(*E).assign(sentenceSize,vector<int>(sentenceSize));
 	(*edge2LostParts).assign(num_arcs,vector<int>());
-	(*heads).assign(sentenceSize,0);
+	(*heads).assign(sentenceSize,-1);
+	(*heads)[0] = 0;
 	dependency_parts->BuildEdgePartMapping(edge2parts);
 	for (int u1= 0; u1 < sentenceSize; u1++) {
 		for (int v1= 0; v1 < sentenceSize; v1++) {
@@ -1569,8 +1570,13 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 		const vector<double> &scores, const DependencyParts *dependency_parts, const int sentenceSize, const int numArcs, const vector<vector<int> > *E, vector<int> heads) {
 
 	bool improved = true;
-	bool verbose = false;
+	bool verbose = true;
 	int nimprovements = 0;
+	for (int r=1; r < heads.size(); r++) {
+		if (heads[r] < 0) {
+			heads[r] = 0;
+		}
+	}
 	calcSubTrees(heads, &subTrees);
 	if (verbose) {
 		for (int r=1; r < heads.size(); r++) {
@@ -1715,6 +1721,7 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 				else {
 					uv_contribution = calcEdgeContribution(uv_r, predicted_output, edge2parts,scores, dependency_parts, E);
 				}
+				verbose && cout << "trying (u,v,x) = (" << u << "," << v << "," << x << ")" << endl;
 				verbose && cout << "uv_r = " << uv_r << ", uv_contribution = " << uv_contribution << endl;
 				if (uv_r >= 0) {
 					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 0" << endl;
@@ -1821,7 +1828,7 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 	vector<vector<int> > edge2LostEdges, edge2LostParts, E, subTrees, edge2parts, edge2partsCopy, ECopy;
 
 	// beam variables
-	int beamSize = 3;
+	int beamSize = 1;
 	vector<double> totalBeamVals;
 	vector<vector<int> > rootsBeam,headsBeam, beamsDistance;
 	vector<vector<double> > part2probBeam, part2valBeam;
@@ -1863,13 +1870,14 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 		LOG(INFO) << "after building data structures" << endl;
 	}
 	// n * ( E + n )
+	int nActiveBeams = beamSize;
 	for (int iter_num = 0; iter_num < sentenceSize - 1; iter_num++) {
 		vector < sol > sols;
+		vector <bool> foundBeans(beamSize);
 		for (int i=0; i < beamSize; i++) {
 			sols.push_back(sol(INFINITY, -1, -1, -1));
 		}
-		vector <int> beamsWithNoSol;
-		for (int beam = 0; beam < beamSize; beam++) {
+		for (int beam = 0; beam < nActiveBeams; beam++) {
 			for (int v = 1; v < sentenceSize; v++) {
 				bool singleHead = true;
 				bool noHead = true;
@@ -1879,6 +1887,7 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 				for (int u = 0; u < max_u; u++) {
 					int r = EBeam[beam][u][v];
 					if (r < 0) continue;
+					foundBeans[beam] = true;
 					if (noHead) {
 						noHead = false;
 					} else if (singleHead) {
@@ -1945,19 +1954,19 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 				printAll(dependency_parts, edge2LostEdges, E, part2prob, roots, edge2parts, scores);
 			}
 		}
-		vector <bool> foundBeans(beamSize);
-		for (int i =0; i < beamSize; i++) {
-			if (sols[i].fromBeam >= 0) {
-				foundBeans[sols[i].fromBeam] = true;
-			}
-		}
 		int unfounBeanIterator = 0;
-		for (int i =0; i < beamSize; i++) {
+		int i;
+		for (i =0; i < beamSize; i++) {
 			int fromBeam = sols[i].fromBeam;
 			bool noSol = false;
+			// if no sol - try to pass on beams that realy had no sol (all entries in E are -1)
+			// instead of duplicate sols
 			if (fromBeam == -1) {
-				while (foundBeans[unfounBeanIterator]) {
+				while (foundBeans[unfounBeanIterator] && (unfounBeanIterator < beamSize)) {
 					unfounBeanIterator++;
+				}
+				if (unfounBeanIterator >= beamSize) {
+					break;
 				}
 				foundBeans[unfounBeanIterator] = true;
 				fromBeam = unfounBeanIterator;
@@ -1981,6 +1990,7 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 									&predicted_outputBeamTemp[i], &part2valBeamTemp[i],alpha, headsBeamTemp[i]);
 			}
 		}
+		nActiveBeams = i;
 		rootsBeam = rootsBeamTemp;
 		headsBeam = headsBeamTemp;
 		part2probBeam = part2probBeamTemp;
@@ -2004,8 +2014,8 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 		edge2partsBeamTemp.clear();
 		totalBeamValsTemp.clear();
 		predicted_outputBeamTemp.clear();
-		for (int beam1=0; beam1 < beamSize; beam1++) {
-			for (int beam2=beam1; beam2 < beamSize; beam2++) {
+		for (int beam1=0; beam1 < nActiveBeams; beam1++) {
+			for (int beam2=beam1; beam2 < nActiveBeams; beam2++) {
 				int dist = calcDistance(headsBeam[beam1],headsBeam[beam2]);
 				beamsDistance[beam1][beam2] = dist;
 				beamsDistance[beam2][beam1] = dist;
@@ -2015,7 +2025,7 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 	// choose best tree
 	double bestVal = -1 * INFINITY;
 	int bestBeam = -1;
-	for (int beam = 0; beam < beamSize; beam++) {
+	for (int beam = 0; beam < nActiveBeams; beam++) {
 		double currVal = 0.0;
 		for (int r = 0; r < predicted_outputBeam[beam].size(); r++) {
 			currVal += predicted_outputBeam[beam][r] * scores[r];

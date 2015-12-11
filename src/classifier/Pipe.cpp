@@ -402,7 +402,7 @@ void Pipe::TrainEpoch(int epoch) {
 	ilansPrints = false;
 	bool ilansP = false;
 //	if ((epoch == 4) && (i == 24123)) {
-	if ((epoch == 0) && (i == 22612)) {
+	if ((epoch == 0) && (i == 572)) {
 		ilansP = getTrue();
 		ilansPrints = true;
 	}
