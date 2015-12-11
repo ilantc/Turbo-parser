@@ -1570,7 +1570,7 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 		const vector<double> &scores, const DependencyParts *dependency_parts, const int sentenceSize, const int numArcs, const vector<vector<int> > *E, vector<int> heads) {
 
 	bool improved = true;
-	bool verbose = true;
+	bool verbose = false;
 	int nimprovements = 0;
 	for (int r=1; r < heads.size(); r++) {
 		if (heads[r] < 0) {
@@ -1828,7 +1828,7 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 	vector<vector<int> > edge2LostEdges, edge2LostParts, E, subTrees, edge2parts, edge2partsCopy, ECopy;
 
 	// beam variables
-	int beamSize = 1;
+	int beamSize = 3;
 	vector<double> totalBeamVals;
 	vector<vector<int> > rootsBeam,headsBeam, beamsDistance;
 	vector<vector<double> > part2probBeam, part2valBeam;
