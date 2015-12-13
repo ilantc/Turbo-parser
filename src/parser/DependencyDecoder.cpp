@@ -1873,7 +1873,7 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 	int nActiveBeams = beamSize;
 	for (int iter_num = 0; iter_num < sentenceSize - 1; iter_num++) {
 		vector < sol > sols;
-		vector <bool> foundBeans(beamSize);
+		vector <bool> foundBeans(nActiveBeams);
 		for (int i=0; i < beamSize; i++) {
 			sols.push_back(sol(INFINITY, -1, -1, -1));
 		}
@@ -1962,10 +1962,10 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 			// if no sol - try to pass on beams that realy had no sol (all entries in E are -1)
 			// instead of duplicate sols
 			if (fromBeam == -1) {
-				while (foundBeans[unfounBeanIterator] && (unfounBeanIterator < beamSize)) {
+				while (foundBeans[unfounBeanIterator] && (unfounBeanIterator < nActiveBeams)) {
 					unfounBeanIterator++;
 				}
-				if (unfounBeanIterator >= beamSize) {
+				if (unfounBeanIterator >= nActiveBeams) {
 					break;
 				}
 				foundBeans[unfounBeanIterator] = true;
