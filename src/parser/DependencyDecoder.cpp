@@ -1875,7 +1875,8 @@ void checkEq(vector<double> *predicted_output, const vector<double> predicted_ou
 }
 
 void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees,const vector<vector<int> >  edge2parts,
-		const vector<double> &scores, const DependencyParts *dependency_parts, const int sentenceSize, const int numArcs, const vector<vector<int> > *E, vector<int> heads) {
+		const vector<double> &scores, const DependencyParts *dependency_parts, const int sentenceSize, const int numArcs,
+		const vector<vector<int> > *E, vector<int> heads, int maxImprovements) {
 
 	bool improved = true;
 	bool verbose = false;
@@ -1923,8 +1924,7 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 		}
 	}
 
-
-	while (improved && nimprovements < 5) {
+	while (improved && nimprovements < maxImprovements) {
 		vector<double> predicted_output_copy;
 		predicted_output_copy = (*predicted_output);
 		improved = false;
@@ -2194,8 +2194,9 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 			printAll(dependency_parts, edge2LostEdges, E, part2prob, roots, edge2parts, scores);
 		}
 	}
-	if (pipe_->GetDependencyOptions()->improveLocal()) {
-		improveLocal(predicted_output,subTrees,edge2partsCopy,scores, dependency_parts, sentenceSize, num_arcs, &ECopy, heads);
+	if (pipe_->GetDependencyOptions()->improveLocal() > 0) {
+		improveLocal(predicted_output,subTrees,edge2partsCopy,scores, dependency_parts,
+				sentenceSize, num_arcs, &ECopy, heads,pipe_->GetDependencyOptions()->improveLocal());
 	}
 //
 //	freeDataStructures(dependency_parts, offset_arcs, num_arcs, sentenceSize, &roots, &edge2Gain, &edge2Loss, &part2prob, scores,
@@ -2283,10 +2284,11 @@ void DependencyDecoder::Decode2SidedMinLoss(Instance *instance, Parts *parts,
 			}
 		}
 	}
-	if (pipe_->GetDependencyOptions()->improveLocal()) {
+	if (pipe_->GetDependencyOptions()->improveLocal() > 0) {
 		vector<vector<int> > subTrees;
 		subTrees.assign(sentenceSize,vector<int>());
-		improveLocal(predicted_output,subTrees,edge2partsCopy,scores, dependency_parts, sentenceSize, num_arcs, &ECopy, heads);
+		improveLocal(predicted_output,subTrees,edge2partsCopy,scores, dependency_parts,
+				sentenceSize, num_arcs, &ECopy, heads,pipe_->GetDependencyOptions()->improveLocal());
 	}
 
 }
