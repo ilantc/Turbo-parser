@@ -118,4 +118,26 @@ void DependencyParts::BuildEdgePartMapping(vector<vector<int> > *edge2parts) {
 		(*edge2parts)[r1].push_back(r);
 		(*edge2parts)[r2].push_back(r);
 	}
+	GetOffsetGrandSibl(&currOffset,&curr_n);
+	//	LOG(INFO) << "n_gp = " << curr_n << ", offset gp = " << currOffset;
+	for (r = currOffset; r < curr_n + currOffset; ++r) {
+		DependencyPartGrandSibl *part = static_cast<DependencyPartGrandSibl*>((*this)[r]);
+		int r1 = FindArc(part->grandparent(), part->head());
+		int r2 = FindArc(part->head(), part->modifier());
+		int r3 = FindArc(part->head(), part->sibling());
+		(*edge2parts)[r1].push_back(r);
+		(*edge2parts)[r2].push_back(r);
+		(*edge2parts)[r3].push_back(r);
+	}
+	GetOffsetTriSibl(&currOffset,&curr_n);
+	//	LOG(INFO) << "n_gp = " << curr_n << ", offset gp = " << currOffset;
+	for (r = currOffset; r < curr_n + currOffset; ++r) {
+		DependencyPartTriSibl *part = static_cast<DependencyPartTriSibl*>((*this)[r]);
+		int r1 = FindArc(part->head(), part->modifier());
+		int r2 = FindArc(part->head(), part->sibling());
+		int r3 = FindArc(part->head(), part->other_sibling());
+		(*edge2parts)[r1].push_back(r);
+		(*edge2parts)[r2].push_back(r);
+		(*edge2parts)[r3].push_back(r);
+	}
 }

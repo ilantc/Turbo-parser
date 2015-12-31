@@ -1123,6 +1123,109 @@ void DependencyPipe::MakePartsHeadBigrams(Instance *instance,
   }
 }
 
+void MakePartsTriSiblingsIlan(Instance *instance, Parts *parts, vector<double> *gold_outputs) {
+	DependencyInstanceNumeric *sentence =
+	    static_cast<DependencyInstanceNumeric*>(instance);
+	  DependencyParts *dependency_parts = static_cast<DependencyParts*>(parts);
+	  int sentence_length = sentence->size();
+	  bool make_gold = (gold_outputs != NULL);
+
+	  // Three siblings: (h,m), (h,s), and (h,t).
+	  for (int h = 0; h < sentence_length; ++h) {
+		  for (int m = 1; m < sentence_length; ++m) {
+			  if (m == h) continue;
+			  int r1 = dependency_parts->FindArc(h, m);
+			  if (r1 < 0) continue;
+
+			  for (int s = m+1; s < sentence_length; ++s) {
+				  if (s == h) continue;
+				  int r2 = dependency_parts->FindArc(h, s);
+				  if (r2 < 0) continue;
+				  for (int t = s+1; t < sentence_length; ++t) {
+					  if (t == h) continue;
+					  int r3 = dependency_parts->FindArc(h, t);
+					  if (r3 < 0) continue;
+					  Part *part = dependency_parts->CreatePartTriSibl(h, m, s, t);
+					  dependency_parts->push_back(part);
+					  if (make_gold) {
+						  double value = 0.0;
+						  if (	NEARLY_EQ_TOL((*gold_outputs)[r1], 1.0, 1e-9) &&
+								NEARLY_EQ_TOL((*gold_outputs)[r2], 1.0, 1e-9) &&
+								NEARLY_EQ_TOL((*gold_outputs)[r3], 1.0, 1e-9)) {
+									value = 1.0;
+						  }
+						  gold_outputs->push_back(value);
+					  }
+				  }
+			  }
+		  }
+	  }
+
+}
+
+void MakePartsGrandSiblingsIlan(Instance *instance, Parts *parts, vector<double> *gold_outputs) {
+	DependencyInstanceNumeric *sentence = static_cast<DependencyInstanceNumeric*>(instance);
+	DependencyParts *dependency_parts = static_cast<DependencyParts*>(parts);
+	int sentence_length = sentence->size();
+	bool make_gold = (gold_outputs != NULL);
+
+	// Grandparents with siblings: (g,h,m) and (g,h,s).
+	for (int g = 0; g < sentence_length; ++g) {
+	    for (int h = 0; h < sentence_length; ++h) {
+	    	if (g == h) continue;
+	    	int r = dependency_parts->FindArc(g, h);
+	    	if (r < 0) continue;
+
+	    	bool grandpar_arc_active = false;
+	    	if (NEARLY_EQ_TOL((*gold_outputs)[r], 1.0, 1e-9)) {
+	    		grandpar_arc_active = true;
+	    	}
+
+	    	bool first_arc_active = false;
+	    	bool second_arc_active = false;
+
+	    	for (int m = 0; m < sentence_length; ++m) {
+	    		if (m == h) continue;
+	    		if (m == g) continue;
+	    		int r1 = dependency_parts->FindArc(h, m);
+	    		if (r1 < 0) continue;
+
+	    		if (make_gold) {
+	    			// Check if the first arc is active.
+	    			if (NEARLY_EQ_TOL((*gold_outputs)[r1], 1.0, 1e-9)) {
+	    				first_arc_active = true;
+	    			}
+	    		}
+
+	    		for (int s = m+1; s < sentence_length; ++s) {
+	    			if (s == h) continue;
+	    			if (s == g) continue;
+	    			int r2 = dependency_parts->FindArc(h, s);
+	    			if (r2 < 0) continue;
+
+	    			if (make_gold) {
+	    				// Check if the second arc is active.
+	    				if (NEARLY_EQ_TOL((*gold_outputs)[r2], 1.0, 1e-9)) {
+	    					second_arc_active = true;
+	    				}
+	    			}
+
+	    			Part *part = dependency_parts->CreatePartGrandSibl(g, h, m, s);
+	    			dependency_parts->push_back(part);
+
+	    			if (make_gold) {
+	    				double value = 0.0;
+	    				if (first_arc_active && second_arc_active && grandpar_arc_active) {
+	    					value = 1.0;
+	    				}
+	    				gold_outputs->push_back(value);
+	    			}
+	    		}
+	    	}
+	    }
+	}
+}
+
 void DependencyPipe::MakePartsGlobal(Instance *instance,
                                     Parts *parts,
                                     vector<double> *gold_outputs, bool ilansChanges) {
@@ -1156,7 +1259,11 @@ void DependencyPipe::MakePartsGlobal(Instance *instance,
   num_parts_initial = dependency_parts->size();
   if (dependency_options->use_grandsiblings()) {
 	ilansP && cout << "use grandSiblings = " << dependency_options->use_grandsiblings() << endl;
-    MakePartsGrandSiblings(instance, parts, gold_outputs, ilansChanges);
+	if (dependency_options->ilan_decoding() != "") {
+		MakePartsGrandSiblingsIlan(instance, parts, gold_outputs);
+	} else {
+		MakePartsGrandSiblings(instance, parts, gold_outputs, ilansChanges);
+	}
   }
   dependency_parts->SetOffsetGrandSibl(num_parts_initial,
       dependency_parts->size() - num_parts_initial);
@@ -1164,7 +1271,11 @@ void DependencyPipe::MakePartsGlobal(Instance *instance,
   num_parts_initial = dependency_parts->size();
   ilansP && cout << "use triSiblings = " << dependency_options->use_trisiblings() << endl;
   if (dependency_options->use_trisiblings()) {
-    MakePartsTriSiblings(instance, parts, gold_outputs,ilansChanges);
+	  if (dependency_options->ilan_decoding() != "") {
+		  MakePartsTriSiblingsIlan(instance, parts, gold_outputs);
+	  } else {
+		  MakePartsTriSiblings(instance, parts, gold_outputs,ilansChanges);
+	  }
   }
   dependency_parts->SetOffsetTriSibl(num_parts_initial,
       dependency_parts->size() - num_parts_initial);
