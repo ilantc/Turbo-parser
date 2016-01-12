@@ -224,7 +224,7 @@ class DependencyPartGrandpar : public Part {
 
   string toStr() {
   	  return "GP(" + SSTR(g_) + "," + SSTR(h_) + "," + SSTR(m_) + ")";
-  }
+  };
 
  private:
   int g_; // Index of the grandparent.
@@ -267,6 +267,10 @@ class DependencyPartGrandSibl : public Part {
     if (1 != fread(&s_, sizeof(int), 1, fs)) CHECK(false);
   };
 
+  string toStr() {
+	return "GS(" + SSTR(g_) + "," + SSTR(h_) + "," + SSTR(m_) + "," + SSTR(s_) + ")";
+  };
+
  private:
   int g_; // Index of the grandparent.
   int h_; // Index of the head.
@@ -307,6 +311,10 @@ class DependencyPartTriSibl : public Part {
     if (1 != fread(&m_, sizeof(int), 1, fs)) CHECK(false);
     if (1 != fread(&s_, sizeof(int), 1, fs)) CHECK(false);
     if (1 != fread(&t_, sizeof(int), 1, fs)) CHECK(false);
+  };
+
+  string toStr() {
+  	return "TS(" + SSTR(h_) + "," + SSTR(m_) + "," + SSTR(s_) + "," + SSTR(t_) + ")";
   };
 
  private:

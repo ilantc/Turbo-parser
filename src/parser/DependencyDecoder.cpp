@@ -771,6 +771,9 @@ void printSampleFromEdge2parts(vector<vector<int> > edge2parts, DependencyParts 
 			int type = (*dependency_parts)[r]->type();
 			DependencyPartSibl *sibl;
 			DependencyPartGrandpar *gp;
+			DependencyPartGrandSibl *GS;
+			DependencyPartTriSibl *TS;
+			int g,h,m,s,os;
 			switch (type) {
 				case DEPENDENCYPART_SIBL:
 					sibl = static_cast<DependencyPartSibl*>( (*dependency_parts)[r]);
@@ -780,6 +783,23 @@ void printSampleFromEdge2parts(vector<vector<int> > edge2parts, DependencyParts 
 					gp = static_cast<DependencyPartGrandpar*>( (*dependency_parts)[r]);
 					currOutput += "GP(" + SSTR(gp->grandparent()) + "," + SSTR(gp->head()) + "," + SSTR(gp->modifier()) + "), ";
 					break;
+				case DEPENDENCYPART_GRANDSIBL:
+					GS = static_cast<DependencyPartGrandSibl*>((*dependency_parts)[r]);
+					g = GS->grandparent();
+					h = GS->head();
+					m = GS->modifier();
+					s = GS->sibling();
+					currOutput += "GS(" + SSTR(g) + "," + SSTR(h) + "," + SSTR(m) + "," + SSTR(s) + "), ";
+					break;
+				case DEPENDENCYPART_TRISIBL:
+					TS = static_cast<DependencyPartTriSibl*>((*dependency_parts)[r]);
+					h = TS->head();
+					m = TS->modifier();
+					s = TS->sibling();
+					os = TS->other_sibling();
+					currOutput += "TS(" + SSTR(h) + "," + SSTR(m) + "," + SSTR(s) + "," + SSTR(os) + "), ";
+					break;
+
 				default:
 					currOutput += "\n\n BAD PART TYPE: " + SSTR(type);
 			}
@@ -806,12 +826,15 @@ void initsecondaryDS(vector<int> *roots, vector<vector<int> > *subTrees, int sen
 void initDataStructures(DependencyParts *dependency_parts, int offset_arcs, int num_arcs, int sentenceSize,
 		const vector<double> &scores, vector<vector<int> > *edge2LostEdges, vector<vector<int> > *edge2LostParts,
 		vector<vector<int> > *E, vector<vector<int> > *edge2parts) {
+		//vector<double> *edge2Gain, vector<double> *edge2Loss, vector<double> *part2prob, const vector<double> &scores,
+		//vector<vector<int> > *edge2LostEdges, vector<vector<int> > *edge2LostParts, vector<vector<int> > *E,
+		//vector<vector<int> > *edge2parts, vector<double> *part2val, double alpha, vector<int> *heads) {
 
 
 	(*edge2LostEdges).assign(num_arcs,vector<int>());
 	(*E).assign(sentenceSize,vector<int>(sentenceSize));
 	(*edge2LostParts).assign(num_arcs,vector<int>());
-
+	(*heads).assign(sentenceSize,0);
 	dependency_parts->BuildEdgePartMapping(edge2parts);
 	for (int u1= 0; u1 < sentenceSize; u1++) {
 		for (int v1= 0; v1 < sentenceSize; v1++) {
@@ -823,8 +846,11 @@ void initDataStructures(DependencyParts *dependency_parts, int offset_arcs, int 
 				(*edge2LostEdges)[r1].push_back(r2);
 				for (int i = 0; i < (*edge2parts)[r2].size(); i++) {
 					// skip parts of kind GP(g,v1,u1) as they will be added by lost parts of arc(g,v1)
-					int h,m,currPartIndex;
+					// e.g. u1,v1 = 1,2 GP(0,2,1) is lost because of (1,2) twice:
+					// once for (2,1) which is lost and once for (0,2)
+					int h,m,s,currPartIndex;
 					DependencyPartGrandpar *lostGP;
+					DependencyPartGrandSibl *lostGS;
 					currPartIndex = (*edge2parts)[r2][i];
 					Part *currPart = (*dependency_parts)[currPartIndex];
 					if (currPart->type() == DEPENDENCYPART_GRANDPAR) {
@@ -835,10 +861,22 @@ void initDataStructures(DependencyParts *dependency_parts, int offset_arcs, int 
 							continue;
 						}
 					}
+					if (currPart->type() == DEPENDENCYPART_GRANDSIBL) {
+						lostGS = static_cast<DependencyPartGrandSibl*>(currPart);
+						h = lostGS->head();
+						m = lostGS->modifier();
+						s = lostGS->sibling();
+						if ((h == v1) && (m == u1)){
+							continue;
+						}
+						if ((h == v1) && (s == u1)){
+							continue;
+						}
+					}
 					(*edge2LostParts)[r1].push_back(currPartIndex);
 				}
 			}
-			for (int u2 = 0; u2 < sentenceSize; u2 ++) {
+			for (int u2 = 0; u2 < sentenceSize; u2++) {
 				if (u2 == u1) continue;
 				r2 = dependency_parts->FindArc(u2,v1);
 				if (r2 > -1) {
@@ -885,7 +923,7 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 	vector<int> lostEdgesIndices;
 	lostEdgesIndices = (*edge2LostEdges)[r];
 
-	(*E)[u][v] = -1;
+	(*E)[u][v] = -2;
 
 	for (int i= 0; i < lostEdgesIndices.size(); i++) {
 		int r1 = lostEdgesIndices[i];
@@ -899,9 +937,11 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 		// remove all parts that need to be removed
 		vector<int> lostPartsIndices = (*edge2parts)[r1];
 		for (int j=0; j < lostPartsIndices.size(); j++ ) {
-			int r2,r3,h,m,s,g,k;
+			int r2,r3,r4,r5,os,h,m,s,g,k;
 			DependencyPartSibl *lostSibl;
 			DependencyPartGrandpar *lostGP;
+			DependencyPartGrandSibl *lostGS;
+			DependencyPartTriSibl *lostTS;
 			int currPartIndex = lostPartsIndices[j];
 			Part *currPart = (*dependency_parts)[currPartIndex];
 			switch (currPart->type()) {
@@ -914,7 +954,7 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 					if (r2 == r1) {
 						r2 = (*E)[h][s];
 					}
-					if (r2 == -1) continue;
+					if (r2 < 0) continue;
 					deleteFromVec(edge2parts,r2,currPartIndex);
 					break;
 				case DEPENDENCYPART_GRANDPAR:
@@ -926,10 +966,49 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 					if (r2 == r1) {
 						r2 = (*E)[h][m];
 					}
-					if (r2 == -1) continue;
+					if (r2 < 0) continue;
 					deleteFromVec(edge2parts,r2,currPartIndex);
 
 					break;
+				case DEPENDENCYPART_GRANDSIBL:
+					lostGS = static_cast<DependencyPartGrandSibl*>(currPart);
+					g = lostGS->grandparent();
+					h = lostGS->head();
+					m = lostGS->modifier();
+					s = lostGS->sibling();
+					r3 = (*E)[g][h];
+					if (r3 >= 0) {
+						deleteFromVec(edge2parts,r3,currPartIndex);
+					}
+					r4 = (*E)[h][m];
+					if (r4 >= 0) {
+						deleteFromVec(edge2parts,r4,currPartIndex);
+					}
+					r5 = (*E)[h][s];
+					if (r5 >= 0) {
+						deleteFromVec(edge2parts,r5,currPartIndex);
+					}
+					break;
+				case DEPENDENCYPART_TRISIBL:
+					lostTS = static_cast<DependencyPartTriSibl*>(currPart);
+					h = lostTS->head();
+					m = lostTS->modifier();
+					s = lostTS->sibling();
+					os = lostTS->other_sibling();
+					r3 = (*E)[h][m];
+					if (r3 >= 0) {
+						deleteFromVec(edge2parts,r3,currPartIndex);
+					}
+					r4 = (*E)[h][s];
+					if (r4 >= 0) {
+						deleteFromVec(edge2parts,r4,currPartIndex);
+					}
+					r5 = (*E)[h][os];
+					if (r5 >= 0) {
+						deleteFromVec(edge2parts,r5,currPartIndex);
+					}
+					break;
+
 				default:
 					LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
 					CHECK(false);
@@ -943,53 +1022,69 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 
 	// update part2prob for u,v and output vector
 	(*predicted_output)[r] = 1.0;
-		for (int j = 0; j < (*edge2parts)[r].size(); j++) {
-			int r2 = (*edge2parts)[r][j];
-			int r3,r4,h,m,s,g,k;
-			DependencyPartSibl *lostSibl;
-			DependencyPartGrandpar *lostGP;
-			Part *currPart = (*dependency_parts)[r2];
-			bool completedPart = true;
-			switch (currPart->type()) {
-				case DEPENDENCYPART_SIBL:
-					lostSibl = static_cast<DependencyPartSibl*>(currPart);
-					h = lostSibl->head();
-					m = lostSibl->modifier();
-					s = lostSibl->sibling();
-					r4 = (*E)[h][m];
-					if (r4 > -1) {
-						completedPart = false;
-						break;
-					}
-					r3 = (*E)[h][s];
-					if (r3 > -1) {
-						completedPart = false;
-						break;
-					}
-					break;
-				case DEPENDENCYPART_GRANDPAR:
-					lostGP = static_cast<DependencyPartGrandpar*>(currPart);
-					g = lostGP->grandparent();
-					h = lostGP->head();
-					m = lostGP->modifier();
-					r4 = (*E)[g][h];
-					if (r4 > -1) {
-						completedPart = false;
-						break;
-					}
-					r3 = (*E)[h][m];
-					if (r3 > -1) {
-						completedPart = false;
-						break;
-					}
-					break;
-				default:
-					LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
-					CHECK(false);
-			}
-			if (completedPart) {
-				(*predicted_output)[r2] = 1.0;
-			}
+	for (int j = 0; j < (*edge2parts)[r].size(); j++) {
+		int r2 = (*edge2parts)[r][j];
+		(*part2prob)[r2] /= p;
+		(*part2val)[r2] /= p;
+		// check if part is complete
+		int r3,r4,r5,h,m,s,g,k,os;
+		DependencyPartSibl *sibl;
+		DependencyPartGrandpar *GP;
+		DependencyPartGrandSibl *lostGS;
+		DependencyPartTriSibl *lostTS;
+		Part *currPart = (*dependency_parts)[r2];
+		switch (currPart->type()) {
+			case DEPENDENCYPART_SIBL:
+				sibl = static_cast<DependencyPartSibl*>(currPart);
+				h = sibl->head();
+				m = sibl->modifier();
+				s = sibl->sibling();
+				r3 = (*E)[h][m];
+				r4 = (*E)[h][s];
+				if ((r3 == -2) && (r4 == -2)) {
+					(*predicted_output)[r2] = 1.0;
+				}
+				break;
+			case DEPENDENCYPART_GRANDPAR:
+				GP = static_cast<DependencyPartGrandpar*>(currPart);
+				g = GP->grandparent();
+				h = GP->head();
+				m = GP->modifier();
+				r3 = (*E)[h][m];
+				r4 = (*E)[g][h];
+				if ((r3 == -2) && (r4 == -2)) {
+					(*predicted_output)[r2] = 1.0;
+				}
+				break;
+			case DEPENDENCYPART_GRANDSIBL:
+				lostGS = static_cast<DependencyPartGrandSibl*>(currPart);
+				g = lostGS->grandparent();
+				h = lostGS->head();
+				m = lostGS->modifier();
+				s = lostGS->sibling();
+				r3 = (*E)[g][h];
+				r4 = (*E)[h][m];
+				r5 = (*E)[h][s];
+				if ((r3 == -2) && (r4 == -2) && (r5 == -2)) {
+					(*predicted_output)[r2] = 1.0;
+				}
+				break;
+			case DEPENDENCYPART_TRISIBL:
+				lostTS = static_cast<DependencyPartTriSibl*>(currPart);
+				h = lostTS->head();
+				m = lostTS->modifier();
+				s = lostTS->sibling();
+				os = lostTS->other_sibling();
+				r3 = (*E)[h][m];
+				r4 = (*E)[h][s];
+				r5 = (*E)[h][os];
+				if ((r3 == -2) && (r4 == -2) && (r5 == -2)) {
+					(*predicted_output)[r2] = 1.0;
+				}
+				break;
+			default:
+				LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+				CHECK(false);
 		}
 	(*edge2parts)[r].clear();
 }
@@ -997,6 +1092,9 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, int sentenceSize, vector<int> *roots,
 		const vector<double> &scores, vector<vector<int> > *edge2LostEdges, vector<vector<int> > *edge2LostParts,
 		vector<vector<int> > *E, vector<vector<int> > *subTrees, vector<vector<int> > *edge2parts, vector<double> *predicted_output) {
+		//vector<double> *edge2Gain, vector<double> *edge2Loss, vector<double> *part2prob, const vector<double> &scores,
+		//vector<vector<int> > *edge2LostEdges, vector<vector<int> > *edge2LostParts, vector<vector<int> > *E, vector<vector<int> > *subTrees,
+		//vector<vector<int> > *edge2parts, vector<double> *predicted_output, vector<double> *part2val, double alpha, vector<int> heads) {
 
 
 	double eps = 0.00001;
@@ -1012,7 +1110,8 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 
 	vector<int> vSubTree = (*subTrees)[v];
 
-	(*E)[u][v] = -1;
+	(*E)[u][v] = -2;
+	(*part2prob)[r] = 1.0
 
 	for (int i= 0; i < lostEdgesIndices.size(); i++) {
 		int r1 = lostEdgesIndices[i];
@@ -1026,9 +1125,11 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 		// remove all parts that need to be removed
 		vector<int> lostPartsIndices = (*edge2parts)[r1];
 		for (int j=0; j < lostPartsIndices.size(); j++ ) {
-			int r2,r3,h,m,s,g,k;
+			int r2,r3,r4,r5,h,m,s,g,k,os;
 			DependencyPartSibl *lostSibl;
 			DependencyPartGrandpar *lostGP;
+			DependencyPartGrandSibl *lostGS;
+			DependencyPartTriSibl*lostTS;
 			int currPartIndex = lostPartsIndices[j];
 			Part *currPart = (*dependency_parts)[currPartIndex];
 			switch (currPart->type()) {
@@ -1055,7 +1156,44 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 					}
 					if (r2 < 0) continue;
 					deleteFromVec(edge2parts,r2,currPartIndex);
-
+					break;
+				case DEPENDENCYPART_GRANDSIBL:
+					lostGS = static_cast<DependencyPartGrandSibl*>(currPart);
+					g = lostGS->grandparent();
+					h = lostGS->head();
+					m = lostGS->modifier();
+					s = lostGS->sibling();
+					r3 = (*E)[g][h];
+					if (r3 >= 0) {
+						deleteFromVec(edge2parts,r3,currPartIndex);
+					}
+					r4 = (*E)[h][m];
+					if (r4 >= 0) {
+						deleteFromVec(edge2parts,r4,currPartIndex);
+					}
+					r5 = (*E)[h][s];
+					if (r5 >= 0) {
+						deleteFromVec(edge2parts,r5,currPartIndex);
+					}
+					break;
+				case DEPENDENCYPART_TRISIBL:
+					lostTS = static_cast<DependencyPartTriSibl*>(currPart);
+					h = lostTS->head();
+					m = lostTS->modifier();
+					s = lostTS->sibling();
+					os = lostTS->other_sibling();
+					r3 = (*E)[h][m];
+					if (r3 >= 0) {
+						deleteFromVec(edge2parts,r3,currPartIndex);
+					}
+					r4 = (*E)[h][s];
+					if (r4 >= 0) {
+						deleteFromVec(edge2parts,r4,currPartIndex);
+					}
+					r5 = (*E)[h][os];
+					if (r5 >= 0) {
+						deleteFromVec(edge2parts,r5,currPartIndex);
+					}
 					break;
 				default:
 					LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
@@ -1072,8 +1210,13 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 	for (int j = 0; j < vSubTree.size(); j++) {
 		int currNode = vSubTree[j];
 		(*roots)[currNode] = uRoot;
-		(*subTrees)[uRoot].push_back(currNode);
 	}
+	int currNode = u;
+	while (currNode != uRoot) {
+		(*subTrees)[currNode].insert((*subTrees)[currNode].end(), vSubTree.begin(),vSubTree.end());
+		currNode = heads[currNode];
+	}
+	(*subTrees)[uRoot].insert((*subTrees)[uRoot].end(), vSubTree.begin(),vSubTree.end());
 
 	// update edge2LostEdges
 	for (int j = 0; j < vSubTree.size(); j++) {
@@ -1119,50 +1262,67 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 	(*predicted_output)[r] = 1.0;
 	for (int j = 0; j < (*edge2parts)[r].size(); j++) {
 		int r2 = (*edge2parts)[r][j];
-		int r3,r4,h,m,s,g,k;
-		DependencyPartSibl *lostSibl;
-		DependencyPartGrandpar *lostGP;
+		(*part2prob)[r2] /= p;
+		(*part2val)[r2] /= p;
+		// check if part is complete
+		int r3,r4,r5,h,m,s,g,k,os;
+		DependencyPartSibl *sibl;
+		DependencyPartGrandpar *GP;
+		DependencyPartGrandSibl *lostGS;
+		DependencyPartTriSibl*lostTS;
 		Part *currPart = (*dependency_parts)[r2];
-		bool completedPart = true;
 		switch (currPart->type()) {
 			case DEPENDENCYPART_SIBL:
-				lostSibl = static_cast<DependencyPartSibl*>(currPart);
-				h = lostSibl->head();
-				m = lostSibl->modifier();
-				s = lostSibl->sibling();
-				r4 = (*E)[h][m];
-				if (r4 > -1) {
-					completedPart = false;
-					break;
-				}
-				r3 = (*E)[h][s];
-				if (r3 > -1) {
-					completedPart = false;
-					break;
+				sibl = static_cast<DependencyPartSibl*>(currPart);
+				h = sibl->head();
+				m = sibl->modifier();
+				s = sibl->sibling();
+				r3 = (*E)[h][m];
+				r4 = (*E)[h][s];
+				if ((r3 == -2) && (r4 == -2)) {
+					(*predicted_output)[r2] = 1.0;
 				}
 				break;
 			case DEPENDENCYPART_GRANDPAR:
-				lostGP = static_cast<DependencyPartGrandpar*>(currPart);
-				g = lostGP->grandparent();
-				h = lostGP->head();
-				m = lostGP->modifier();
-				r4 = (*E)[g][h];
-				if (r4 > -1) {
-					completedPart = false;
-					break;
-				}
+				GP = static_cast<DependencyPartGrandpar*>(currPart);
+				g = GP->grandparent();
+				h = GP->head();
+				m = GP->modifier();
 				r3 = (*E)[h][m];
-				if (r3 > -1) {
-					completedPart = false;
-					break;
+				r4 = (*E)[g][h];
+				if ((r3 == -2) && (r4 == -2)) {
+					(*predicted_output)[r2] = 1.0;
+				}
+				break;
+			case DEPENDENCYPART_GRANDSIBL:
+				lostGS = static_cast<DependencyPartGrandSibl*>(currPart);
+				g = lostGS->grandparent();
+				h = lostGS->head();
+				m = lostGS->modifier();
+				s = lostGS->sibling();
+				r3 = (*E)[g][h];
+				r4 = (*E)[h][m];
+				r5 = (*E)[h][s];
+				if ((r3 == -2) && (r4 == -2) && (r5 == -2)) {
+					(*predicted_output)[r2] = 1.0;
+				}
+				break;
+			case DEPENDENCYPART_TRISIBL:
+				lostTS = static_cast<DependencyPartTriSibl*>(currPart);
+				h = lostTS->head();
+				m = lostTS->modifier();
+				s = lostTS->sibling();
+				os = lostTS->other_sibling();
+				r3 = (*E)[h][m];
+				r4 = (*E)[h][s];
+				r5 = (*E)[h][os];
+				if ((r3 == -2) && (r4 == -2) && (r5 == -2)) {
+					(*predicted_output)[r2] = 1.0;
 				}
 				break;
 			default:
 				LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
 				CHECK(false);
-		}
-		if (completedPart) {
-			(*predicted_output)[r2] = 1.0;
 		}
 
 	}
@@ -1332,6 +1492,668 @@ void calcLoss(int r, vector<vector<int> > *E,const vector<double> &scores, vecto
 	(*val) = (beta * loss) - ((1 - beta) * gain);
 }
 
+double calcEdgeContribution(const int r, const vector<double> *predicted_output, const vector<vector<int> >  edge2parts,
+		const vector<double> &scores,const DependencyParts *dependency_parts,const vector<vector<int> > *E) {
+	double contribution = scores[r];
+	for (int partIndex = 0; partIndex < edge2parts[r].size(); partIndex++) {
+		int currPartIndex = edge2parts[r][partIndex];
+		int h,m,s,g,os,r2;
+		bool allLit;
+		DependencyPartSibl *lostSibl;
+		DependencyPartGrandpar *lostGP;
+		DependencyPartGrandSibl *lostGS;
+		DependencyPartTriSibl *lostTS;
+		Part *currPart = (*dependency_parts)[currPartIndex];
+		switch (currPart->type()) {
+			case DEPENDENCYPART_SIBL:
+				lostSibl = static_cast<DependencyPartSibl*>(currPart);
+				h = lostSibl->head();
+				m = lostSibl->modifier();
+				s = lostSibl->sibling();
+				r2 = (*E)[h][m];
+				if (r2 == r) {
+					r2 = (*E)[h][s];
+				}
+				if ((*predicted_output)[r2] == 1) {
+					contribution += scores[currPartIndex];
+				}
+				break;
+			case DEPENDENCYPART_GRANDPAR:
+				lostGP = static_cast<DependencyPartGrandpar*>(currPart);
+				g = lostGP->grandparent();
+				h = lostGP->head();
+				m = lostGP->modifier();
+				r2 = (*E)[g][h];
+				if (r2 == r) {
+					r2 = (*E)[h][m];
+				}
+				if ((*predicted_output)[r2] == 1) {
+					contribution += scores[currPartIndex];
+				}
+				break;
+			case DEPENDENCYPART_GRANDSIBL:
+				lostGS = static_cast<DependencyPartGrandSibl*>(currPart);
+				g = lostGS->grandparent();
+				h = lostGS->head();
+				m = lostGS->modifier();
+				s = lostGS->sibling();
+				allLit = true;
+				if ((*predicted_output)[(*E)[g][h]] == 0.0) {
+					allLit = false;
+				}
+				if ((*predicted_output)[(*E)[h][m]] == 0.0) {
+					allLit = false;
+				}
+				if ((*predicted_output)[(*E)[h][s]] == 0.0) {
+					allLit = false;
+				}
+				if (allLit) {
+					contribution += scores[currPartIndex];
+				}
+				break;
+			case DEPENDENCYPART_TRISIBL:
+				lostTS = static_cast<DependencyPartTriSibl*>(currPart);
+				h = lostTS->head();
+				m = lostTS->modifier();
+				s = lostTS->sibling();
+				os = lostTS->other_sibling();
+				allLit = true;
+				if ((*predicted_output)[(*E)[h][m]] == 0.0) {
+					allLit = false;
+				}
+				if ((*predicted_output)[(*E)[h][s]] == 0.0) {
+					allLit = false;
+				}
+				if ((*predicted_output)[(*E)[h][os]] == 0.0) {
+					allLit = false;
+				}
+				if (allLit) {
+					contribution += scores[currPartIndex];
+				}
+				break;
+
+			default:
+				LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+				CHECK(false);
+		}
+	}
+	return contribution;
+}
+
+double calc2EdgesContribution(const int r1,const int r2,const vector<double> *predicted_output, const vector<vector<int> >  edge2parts,
+		const vector<double> &scores,const DependencyParts *dependency_parts,const vector<vector<int> > *E) {
+	double contribution = scores[r1] + scores[r2];
+	double sharedPartsVal = 0.0;
+//	for (int r=0; r < (*predicted_output).size(); r++) {
+//		cout << r << ", " << scores[r] << ", " << (*predicted_output)[r] << endl;
+//	}
+	for (int partIndex = 0; partIndex < edge2parts[r1].size(); partIndex++) {
+		int currPartIndex = edge2parts[r1][partIndex];
+		int h,m,s,g,os,r3;
+		bool isShared;
+		bool allLit;
+		DependencyPartSibl *lostSibl;
+		DependencyPartGrandpar *lostGP;
+		DependencyPartGrandSibl *lostGS;
+		DependencyPartTriSibl *lostTS;
+		Part *currPart = (*dependency_parts)[currPartIndex];
+		switch (currPart->type()) {
+			case DEPENDENCYPART_SIBL:
+				lostSibl = static_cast<DependencyPartSibl*>(currPart);
+				h = lostSibl->head();
+				m = lostSibl->modifier();
+				s = lostSibl->sibling();
+				r3 = (*E)[h][m];
+				if (r3 == r1) {
+					r3 = (*E)[h][s];
+				}
+				if (r3 == r2) {
+					sharedPartsVal += scores[currPartIndex];
+				}
+//				cout << "r3 = " << r3 << ", out[r3] = " << (*predicted_output)[r3] << endl;
+				if ((*predicted_output)[r3] == 1) {
+					contribution += scores[currPartIndex];
+				}
+				break;
+			case DEPENDENCYPART_GRANDPAR:
+				lostGP = static_cast<DependencyPartGrandpar*>(currPart);
+				g = lostGP->grandparent();
+				h = lostGP->head();
+				m = lostGP->modifier();
+				r3 = (*E)[g][h];
+				if (r3 == r1) {
+					r3 = (*E)[h][m];
+				}
+				if (r3 == r2) {
+					sharedPartsVal += scores[currPartIndex];
+				}
+//				cout << "r3 = " << r3 << ", out[r3] = " << (*predicted_output)[r3] << endl;
+				if ((*predicted_output)[r3] == 1) {
+					contribution += scores[currPartIndex];
+				}
+				break;
+			case DEPENDENCYPART_GRANDSIBL:
+				lostGS = static_cast<DependencyPartGrandSibl*>(currPart);
+				g = lostGS->grandparent();
+				h = lostGS->head();
+				m = lostGS->modifier();
+				s = lostGS->sibling();
+				isShared = false;
+				allLit = true;
+				if ((*predicted_output)[(*E)[g][h]] == 0.0) {
+					allLit = false;
+				}
+				if ((*E)[g][h] == r2) {
+					isShared = true;
+				}
+				if ((*predicted_output)[(*E)[h][m]] == 0.0) {
+					allLit = false;
+				}
+				if ((*E)[h][m] == r2) {
+					isShared = true;
+				}
+				if ((*predicted_output)[(*E)[h][s]] == 0.0) {
+					allLit = false;
+				}
+				if ((*E)[h][s] == r2) {
+					isShared = true;
+				}
+				if (allLit) {
+					contribution += scores[currPartIndex];
+					if (isShared) {
+						sharedPartsVal += scores[currPartIndex];
+					}
+				}
+				break;
+			case DEPENDENCYPART_TRISIBL:
+				lostTS = static_cast<DependencyPartTriSibl*>(currPart);
+				h = lostTS->head();
+				m = lostTS->modifier();
+				s = lostTS->sibling();
+				os = lostTS->other_sibling();
+				isShared = false;
+				allLit = true;
+				if ((*predicted_output)[(*E)[h][m]] == 0.0) {
+					allLit = false;
+				}
+				if ((*E)[h][m] == r2) {
+					isShared = true;
+				}
+				if ((*predicted_output)[(*E)[h][s]] == 0.0) {
+					allLit = false;
+				}
+				if ((*E)[h][s] == r2) {
+					isShared = true;
+				}
+				if ((*predicted_output)[(*E)[h][os]] == 0.0) {
+					allLit = false;
+				}
+				if ((*E)[h][os] == r2) {
+					isShared = true;
+				}
+				if (allLit) {
+					contribution += scores[currPartIndex];
+					if (isShared) {
+						sharedPartsVal += scores[currPartIndex];
+					}
+				}
+				break;
+			default:
+				LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+				CHECK(false);
+		}
+	}
+
+	for (int partIndex = 0; partIndex < edge2parts[r2].size(); partIndex++) {
+		int currPartIndex = edge2parts[r2][partIndex];
+		int h,m,s,g,os,r3,r4;
+		bool allLit;
+		DependencyPartSibl *lostSibl;
+		DependencyPartGrandpar *lostGP;
+		DependencyPartGrandSibl *lostGS;
+		DependencyPartTriSibl *lostTS;
+		Part *currPart = (*dependency_parts)[currPartIndex];
+		switch (currPart->type()) {
+			case DEPENDENCYPART_SIBL:
+				lostSibl = static_cast<DependencyPartSibl*>(currPart);
+				h = lostSibl->head();
+				m = lostSibl->modifier();
+				s = lostSibl->sibling();
+				r3 = (*E)[h][m];
+				if (r3 == r2) {
+					r3 = (*E)[h][s];
+				}
+//				cout << "r3 = " << r3 << ", out[r3] = " << (*predicted_output)[r3] << endl;
+				if ((*predicted_output)[r3] == 1) {
+					contribution += scores[currPartIndex];
+				}
+				break;
+			case DEPENDENCYPART_GRANDPAR:
+				lostGP = static_cast<DependencyPartGrandpar*>(currPart);
+				g = lostGP->grandparent();
+				h = lostGP->head();
+				m = lostGP->modifier();
+				r3 = (*E)[g][h];
+				if (r3 == r2) {
+					r3 = (*E)[h][m];
+				}
+//				cout << "r3 = " << r3 << ", out[r3] = " << (*predicted_output)[r3] << endl;
+				if ((*predicted_output)[r3] == 1) {
+					contribution += scores[currPartIndex];
+				}
+				break;
+			case DEPENDENCYPART_GRANDSIBL:
+				lostGS = static_cast<DependencyPartGrandSibl*>(currPart);
+				g = lostGS->grandparent();
+				h = lostGS->head();
+				m = lostGS->modifier();
+				s = lostGS->sibling();
+				allLit = true;
+				if ((*predicted_output)[(*E)[g][h]] == 0.0) {
+					allLit = false;
+				}
+				if ((*predicted_output)[(*E)[h][m]] == 0.0) {
+					allLit = false;
+				}
+				if ((*predicted_output)[(*E)[h][s]] == 0.0) {
+					allLit = false;
+				}
+				if (allLit) {
+					contribution += scores[currPartIndex];
+				}
+				break;
+			case DEPENDENCYPART_TRISIBL:
+				lostTS = static_cast<DependencyPartTriSibl*>(currPart);
+				h = lostTS->head();
+				m = lostTS->modifier();
+				s = lostTS->sibling();
+				os = lostTS->other_sibling();
+				allLit = true;
+				if ((*predicted_output)[(*E)[h][m]] == 0.0) {
+					allLit = false;
+				}
+				if ((*predicted_output)[(*E)[h][s]] == 0.0) {
+					allLit = false;
+				}
+				if ((*predicted_output)[(*E)[h][os]] == 0.0) {
+					allLit = false;
+				}
+				if (allLit) {
+					contribution += scores[currPartIndex];
+				}
+				break;
+			default:
+				LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+				CHECK(false);
+		}
+	}
+
+	return contribution - sharedPartsVal;
+}
+
+void toggleEdge(const int r, vector<double> *predicted_output, const vector<vector<int> >  edge2parts,
+		const DependencyParts *dependency_parts,const vector<vector<int> > *E, bool wasAdded) {
+	double newVal = 0.0;
+	if (wasAdded) {
+		newVal = 1.0;
+	}
+	if (r < 0) {
+		LOG(ERROR) << "r < 0: " << r << endl;
+		CHECK(false);
+	}
+	if (r >= (*predicted_output).size() ) {
+		LOG(ERROR) << "r > size: " << r << "/" << (*predicted_output).size() << endl;
+		CHECK(false);
+	}
+	(*predicted_output)[r] = newVal;
+	for (int partIndex = 0; partIndex < edge2parts[r].size(); partIndex++) {
+		int currPartIndex = edge2parts[r][partIndex];
+		if (currPartIndex < 0) {
+			LOG(ERROR) << "currPartIndex < 0: " << currPartIndex << endl;
+			CHECK(false);
+		}
+		if (currPartIndex >= (*predicted_output).size() ) {
+			LOG(ERROR) << "currPartIndex > size: " << currPartIndex << "/" << (*predicted_output).size() << endl;
+			CHECK(false);
+		}
+		if (! wasAdded) {
+			(*predicted_output)[currPartIndex] = newVal;
+			continue;
+		}
+		int h,m,s,g,os,r2,r3;
+		bool allLit;
+		DependencyPartSibl *Sibl;
+		DependencyPartGrandpar *GP;
+		DependencyPartGrandSibl *GS;
+		DependencyPartTriSibl *TS;
+		Part *currPart = (*dependency_parts)[currPartIndex];
+		switch (currPart->type()) {
+			case DEPENDENCYPART_SIBL:
+				Sibl = static_cast<DependencyPartSibl*>(currPart);
+				h = Sibl->head();
+				m = Sibl->modifier();
+				s = Sibl->sibling();
+				r2 = (*E)[h][m];
+				if (r2 == r) {
+					r2 = (*E)[h][s];
+				}
+				if ((*predicted_output)[r2] == 1.0) {
+					(*predicted_output)[currPartIndex] = newVal;
+				}
+				break;
+			case DEPENDENCYPART_GRANDPAR:
+				GP = static_cast<DependencyPartGrandpar*>(currPart);
+				g = GP->grandparent();
+				h = GP->head();
+				m = GP->modifier();
+				r2 = (*E)[g][h];
+				if (r2 == r) {
+					r2 = (*E)[h][m];
+				}
+				if ((*predicted_output)[r2] == 1.0) {
+					(*predicted_output)[currPartIndex] = newVal;
+				}
+				break;
+			case DEPENDENCYPART_GRANDSIBL:
+				GS = static_cast<DependencyPartGrandSibl*>(currPart);
+				g = GS->grandparent();
+				h = GS->head();
+				m = GS->modifier();
+				s = GS->sibling();
+				allLit = true;
+				if ((*predicted_output)[(*E)[g][h]] == 0.0) {
+					allLit = false;
+				}
+				if ((*predicted_output)[(*E)[h][m]] == 0.0) {
+					allLit = false;
+				}
+				if ((*predicted_output)[(*E)[h][s]] == 0.0) {
+					allLit = false;
+				}
+				if (allLit) {
+					(*predicted_output)[currPartIndex] = 1.0;
+				} else {
+					(*predicted_output)[currPartIndex] = 0.0;
+				}
+				break;
+			case DEPENDENCYPART_TRISIBL:
+				TS = static_cast<DependencyPartTriSibl*>(currPart);
+				h = TS->head();
+				m = TS->modifier();
+				s = TS->sibling();
+				os = TS->other_sibling();
+				allLit = true;
+				if ((*predicted_output)[(*E)[h][m]] == 0.0) {
+					allLit = false;
+				}
+				if ((*predicted_output)[(*E)[h][s]] == 0.0) {
+					allLit = false;
+				}
+				if ((*predicted_output)[(*E)[h][os]] == 0.0) {
+					allLit = false;
+				}
+				if (allLit) {
+					(*predicted_output)[currPartIndex] = 1.0;
+				} else {
+					(*predicted_output)[currPartIndex] = 0.0;
+				}
+				break;
+			default:
+				LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+				CHECK(false);
+		}
+	}
+}
+
+void calcSubTrees(vector<int> heads, vector<vector<int> > *subTrees) {
+	for (int i=0; i < (*subTrees).size(); i++) {
+		(*subTrees)[i].clear();
+	}
+	(*subTrees)[0].push_back(0);
+	for (int i=1;i < heads.size(); i++) {
+		(*subTrees)[i].push_back(i);
+		int currentNode = heads[i];
+		while (currentNode != 0) {
+			(*subTrees)[currentNode].push_back(i);
+			currentNode = heads[currentNode];
+		}
+		(*subTrees)[0].push_back(i);
+	}
+}
+
+void checkEq(vector<double> *predicted_output, const vector<double> predicted_output_copy) {
+	for (int i =0; i < (*predicted_output).size(); i++) {
+		if ((*predicted_output)[i] != predicted_output_copy[i]) {
+			cout << "wrong value for entry " << i << endl;
+		}
+	}
+}
+
+void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees,const vector<vector<int> >  edge2parts,
+		const vector<double> &scores, const DependencyParts *dependency_parts, const int sentenceSize, const int numArcs,
+		const vector<vector<int> > *E, vector<int> heads, int maxImprovements) {
+
+	bool improved = true;
+	bool verbose = false;
+	int nimprovements = 0;
+	calcSubTrees(heads, &subTrees);
+	if (verbose) {
+		for (int r=1; r < heads.size(); r++) {
+			cout << "(" << heads[r] << "," << r << "), ";
+		}
+		cout << endl;
+		for (int r=0; r < (*predicted_output).size(); r++) {
+			string partStr = "";
+			DependencyPartArc *arc;
+			DependencyPartSibl *sibl;
+			DependencyPartGrandpar *GP;
+			DependencyPartGrandSibl *GS;
+			DependencyPartTriSibl *TS;
+			Part *currPart = (*dependency_parts)[r];
+			switch (currPart->type()) {
+				case DEPENDENCYPART_SIBL:
+					sibl = static_cast<DependencyPartSibl*>(currPart);
+					partStr = sibl->toStr();
+					break;
+				case DEPENDENCYPART_GRANDPAR:
+					GP = static_cast<DependencyPartGrandpar*>(currPart);
+					partStr = GP->toStr();
+					break;
+				case DEPENDENCYPART_ARC:
+					arc = static_cast<DependencyPartArc*>(currPart);
+					partStr = arc->toStr();
+					break;
+				case DEPENDENCYPART_GRANDSIBL:
+					GS = static_cast<DependencyPartGrandSibl*>(currPart);
+					partStr = GS->toStr();
+					break;
+				case DEPENDENCYPART_TRISIBL:
+					TS = static_cast<DependencyPartTriSibl*>(currPart);
+					partStr = TS->toStr();
+					break;
+				default:
+					LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+					CHECK(false);
+			}
+			cout << r << ", " << scores[r] << ", " << (*predicted_output)[r] << "," << partStr << endl;
+		}
+	}
+
+	while (improved && nimprovements < maxImprovements) {
+		vector<double> predicted_output_copy;
+		predicted_output_copy = (*predicted_output);
+		improved = false;
+		nimprovements++;
+		double bestImprovement = 0.0;
+		int bestu = -1;
+		int bestv = -1;
+		int best_x = -1;
+		int best_w = -1;
+		bool isWithinSubTree = false;
+		for (int v = 1; v < sentenceSize; v++) {
+			vector<bool> checkedHeads(sentenceSize);
+			int u = heads[v];
+			int uv_r = (*E)[u][v];
+			// try 2 opt within subtree:
+			// u -> v -> w -> ... -> x
+			// u -> w -> ... -> x -> v
+			// x is subTreeHead
+			for (int xIndex = 0; xIndex < subTrees[v].size();xIndex++) {
+				int x = subTrees[v][xIndex];
+				checkedHeads[x] = true;
+				if (x == v)  {
+					continue;
+				}
+				// find x-> v 's r
+				int xv_r = (*E)[x][v];
+				if (xv_r < 0) {
+					continue;
+				}
+				// find w
+				int w = -1;
+				int currentNode = x;
+				while (heads[currentNode] != v) {
+					currentNode = heads[currentNode];
+				}
+				w = currentNode;
+				int uw_r = (*E)[u][w];
+				if (uw_r < 0) {
+					continue;
+				}
+				verbose && cout << "trying (u,v,x,w) = (" << u << "," << v << "," << x << "," << w << ")" << endl;
+				int vw_r = (*E)[v][w];
+				double uv_vw_contribution;
+				if (v == 3 && u == 0 && x == 1 && w == 1) {
+					cout << "";
+				}
+				if (vw_r < 0 && uv_r < 0) {
+					uv_vw_contribution = 0.0;
+				} else if (vw_r < 0) {
+					uv_vw_contribution = calcEdgeContribution(uv_r, predicted_output, edge2parts,scores, dependency_parts, E);
+				} else if (uv_r < 0) {
+					uv_vw_contribution = calcEdgeContribution(vw_r, predicted_output, edge2parts,scores, dependency_parts, E);
+				} else {
+					uv_vw_contribution = calc2EdgesContribution(uv_r, vw_r, predicted_output, edge2parts,scores, dependency_parts, E);
+				}
+				verbose && cout << "uv_r = " << uv_r << ", vw_r = " << vw_r << ", uv_vw_contribution = " << uv_vw_contribution << endl;
+				if (uv_r >= 0) {
+					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 0" << endl;
+					(*predicted_output)[uv_r] = 0.0;
+				}
+				if (vw_r >= 0) {
+					verbose && cout << "vw_r: setting out[" << vw_r << "] to be 0" << endl;
+					(*predicted_output)[vw_r] = 0.0;
+				}
+				verbose && cout << "uw_r: setting out[" << uw_r << "] to be 1" << endl;
+				(*predicted_output)[uw_r] = 1.0;
+				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 1" << endl;
+				(*predicted_output)[xv_r] = 1.0;
+				double uw_xv_contribution = calc2EdgesContribution(uw_r, xv_r, predicted_output, edge2parts,scores, dependency_parts, E);
+				verbose && cout << "uw_r = " << uw_r << ", xv_r = " << xv_r << ", uw_xv_contribution = " << uw_xv_contribution << endl;
+				if (uv_r >= 0) {
+					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 1" << endl;
+					(*predicted_output)[uv_r] = 1.0;
+				}
+				if (vw_r >= 0) {
+					verbose && cout << "vw_r: setting out[" << vw_r << "] to be 1" << endl;
+					(*predicted_output)[vw_r] = 1.0;
+				}
+				verbose && cout << "uw_r: setting out[" << uw_r << "] to be 0" << endl;
+				(*predicted_output)[uw_r] = 0.0;
+				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 0" << endl;
+				(*predicted_output)[xv_r] = 0.0;
+				checkEq(predicted_output,predicted_output_copy);
+				double gain = uw_xv_contribution - uv_vw_contribution;
+				if (gain > bestImprovement) {
+					bestImprovement = gain;
+					bestv = v; // v
+					bestu = u; // u
+					best_x = x;
+					best_w = w;
+					isWithinSubTree = true;
+				}
+			}
+			// try 1 opt outside of subtree:
+			// u -> v
+			// x -> v
+			for (int x = 0; x < sentenceSize; x++) {
+				if (checkedHeads[x]) continue;
+				if (x == u) continue;
+				// find x-> v 's r
+				int xv_r = (*E)[x][v];
+				if (xv_r < 0) continue;
+				double uv_contribution;
+				if (uv_r < 0) {
+					uv_contribution = 0.0;
+				}
+				else {
+					uv_contribution = calcEdgeContribution(uv_r, predicted_output, edge2parts,scores, dependency_parts, E);
+				}
+				verbose && cout << "uv_r = " << uv_r << ", uv_contribution = " << uv_contribution << endl;
+				if (uv_r >= 0) {
+					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 0" << endl;
+					(*predicted_output)[uv_r] = 0.0;
+				}
+				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 1" << endl;
+				(*predicted_output)[xv_r] = 1.0;
+				double xv_contribution = calcEdgeContribution(xv_r, predicted_output, edge2parts,scores, dependency_parts, E);
+				verbose && cout << "xv_r = " << xv_r << ", xv_contribution = " << xv_contribution << endl;
+				if (uv_r >= 0) {
+					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 1" << endl;
+					(*predicted_output)[uv_r] = 1.0;
+				}
+				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 0" << endl;
+				(*predicted_output)[xv_r] = 0.0;
+				checkEq(predicted_output,predicted_output_copy);
+				double gain = xv_contribution - uv_contribution;
+				if (gain > bestImprovement) {
+					bestImprovement = gain;
+					bestv = v; // v
+					bestu = u;
+					best_x = x;
+					best_w = -1;
+					isWithinSubTree = false;
+				}
+			}
+		}
+		verbose && cout << "bestu=" << bestu << ", bestv=" << bestv << ", bestx=" << best_x << ", bestw=" << best_w
+				<< ", isWithinSubTree=" << isWithinSubTree << ", improvementVal=" << bestImprovement << ", nimprovements=" << nimprovements << endl;
+		if (bestImprovement > 0.0) {
+			improved = true;
+			double treeVal = 0.0;
+			for (int r=0; r < (*predicted_output).size(); r++) {
+				treeVal += (scores[r] * (*predicted_output)[r]);
+			}
+			// remove edges
+			if ((*E)[bestu][bestv] >= 0) {
+				toggleEdge((*E)[bestu][bestv], predicted_output, edge2parts, dependency_parts, E, false);
+			}
+			if (isWithinSubTree && (*E)[bestv][best_w] >= 0) {
+				toggleEdge((*E)[bestv][best_w], predicted_output, edge2parts, dependency_parts, E, false);
+			}
+			//add edges
+			toggleEdge((*E)[best_x][bestv], predicted_output, edge2parts, dependency_parts, E, true);
+			heads[bestv] = best_x;
+			if (isWithinSubTree) {
+				heads[best_w] = bestu;
+				toggleEdge((*E)[bestu][best_w], predicted_output, edge2parts, dependency_parts, E, true);
+			}
+			double newTreeVal = 0.0;
+			for (int r=0; r < (*predicted_output).size(); r++) {
+				newTreeVal += (scores[r] * (*predicted_output)[r]);
+			}
+			if (abs((newTreeVal - treeVal) - bestImprovement) > 0.00001) {
+				cout << "bug!, old treeVal = " << treeVal << ", newTreeVal = " << newTreeVal << ", improvement = " << bestImprovement << endl;
+			}
+			calcSubTrees(heads, &subTrees);
+		}
+	}
+	for (int i=0; i < subTrees.size(); i++) {
+		subTrees[i].clear();
+	}
+	subTrees.clear();
+}
+
 void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
                                           const vector<double> &scores,
                                           vector<double> *predicted_output) {
@@ -1340,16 +2162,20 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 	DependencyParts *dependency_parts = static_cast<DependencyParts*>(parts);
 	DependencyInstanceNumeric* sentence = static_cast<DependencyInstanceNumeric*>(instance);
 	int sentenceSize = sentence->size();
+	double alpha = pipe_->GetDependencyOptions()->alpha();
 	double beta = pipe_->GetDependencyOptions()->beta();
 	int offset_arcs, num_arcs;
 	dependency_parts->GetOffsetArc(&offset_arcs, &num_arcs);
 
-	vector<int> roots;
-	vector<vector<int> > edge2LostEdges, edge2LostParts, E, subTrees, edge2parts;
+	vector<int> roots,heads;
+	vector<double> edge2Gain, edge2Loss, part2prob, part2val;
+	vector<vector<int> > edge2LostEdges, edge2LostParts, E, subTrees, edge2parts, edge2partsCopy, ECopy;
 
-	initDataStructures(dependency_parts, offset_arcs, num_arcs, sentenceSize, scores,
-			&edge2LostEdges, &edge2LostParts, &E, &edge2parts);
+	initDataStructures(dependency_parts, offset_arcs, num_arcs, sentenceSize, &edge2Gain, &edge2Loss, &part2prob, scores,
+			&edge2LostEdges, &edge2LostParts, &E, &edge2parts, &part2val, alpha, &heads);
 	initsecondaryDS(&roots, &subTrees, sentenceSize);
+	edge2partsCopy = edge2parts;
+	ECopy = E;
 
 	if (printIlan) {
 		printAll(dependency_parts, edge2LostEdges, E, roots, edge2parts, scores);
@@ -1410,14 +2236,19 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 
 
 		if (best_v == -1) {
-			return;
+			break;
 		}
-		updateData(best_u, best_v,dependency_parts, num_arcs, sentenceSize, &roots, scores,
-				&edge2LostEdges, &edge2LostParts, &E, &subTrees, &edge2parts, predicted_output);
+		heads[best_v] = best_u;
+		updateData(best_u, best_v,dependency_parts, num_arcs, sentenceSize, &roots, &edge2Gain, &edge2Loss, &part2prob, scores,
+				&edge2LostEdges, &edge2LostParts, &E, &subTrees, &edge2parts, predicted_output, &part2val,alpha, heads);
 		if (printIlan) {
 			LOG(INFO) << "\n\nafter update data";
 			printAll(dependency_parts, edge2LostEdges, E, roots, edge2parts, scores);
 		}
+	}
+	if (pipe_->GetDependencyOptions()->improveLocal() > 0) {
+		improveLocal(predicted_output,subTrees,edge2partsCopy,scores, dependency_parts,
+				sentenceSize, num_arcs, &ECopy, heads,pipe_->GetDependencyOptions()->improveLocal());
 	}
 //
 //	freeDataStructures(dependency_parts, offset_arcs, num_arcs, sentenceSize, &roots, &edge2Gain, &edge2Loss, &part2prob, scores,
@@ -1438,11 +2269,15 @@ void DependencyDecoder::Decode2SidedMinLoss(Instance *instance, Parts *parts,
 	int offset_arcs, num_arcs;
 	dependency_parts->GetOffsetArc(&offset_arcs, &num_arcs);
 
-	vector<vector<int> > edge2LostEdges, edge2LostParts, E, edge2parts;
+	vector<double> edge2Gain, edge2Loss, part2prob, part2val;
+	vector<int> heads;
+	vector<vector<int> > edge2LostEdges, edge2LostParts, E, edge2parts, ECopy, edge2partsCopy;
 
 
-	initDataStructures(dependency_parts, offset_arcs, num_arcs, sentenceSize, scores,
-			&edge2LostEdges, &edge2LostParts, &E, &edge2parts);
+	initDataStructures(dependency_parts, offset_arcs, num_arcs, sentenceSize, &edge2Gain, &edge2Loss, &part2prob, scores,
+			&edge2LostEdges, &edge2LostParts, &E, &edge2parts, &part2val,alpha,&heads);
+	edge2partsCopy = edge2parts;
+	ECopy = E;
 
 	// n * ( E + n )
 	vector<int> leftSide;
@@ -1489,8 +2324,9 @@ void DependencyDecoder::Decode2SidedMinLoss(Instance *instance, Parts *parts,
 		if (best_v == -1) {
 			return;
 		}
-		updateDataLite(best_u, best_v,dependency_parts, num_arcs, sentenceSize, scores,
-				&edge2LostEdges, &edge2LostParts, &E, &edge2parts, predicted_output);
+		heads[best_v] = best_u;
+		updateDataLite(best_u, best_v,dependency_parts, num_arcs, sentenceSize, &edge2Gain, &edge2Loss, &part2prob, scores,
+				&edge2LostEdges, &edge2LostParts, &E, &edge2parts, predicted_output, &part2val);
 		leftSide.push_back(best_v);
 		for (int j = 0; j < rightSide.size(); j++) {
 			int v = rightSide[j];
@@ -1499,6 +2335,13 @@ void DependencyDecoder::Decode2SidedMinLoss(Instance *instance, Parts *parts,
 			}
 		}
 	}
+	if (pipe_->GetDependencyOptions()->improveLocal() > 0) {
+		vector<vector<int> > subTrees;
+		subTrees.assign(sentenceSize,vector<int>());
+		improveLocal(predicted_output,subTrees,edge2partsCopy,scores, dependency_parts,
+				sentenceSize, num_arcs, &ECopy, heads,pipe_->GetDependencyOptions()->improveLocal());
+	}
+
 }
 
 
