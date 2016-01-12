@@ -771,6 +771,9 @@ void printSampleFromEdge2parts(vector<vector<int> > edge2parts, DependencyParts 
 			int type = (*dependency_parts)[r]->type();
 			DependencyPartSibl *sibl;
 			DependencyPartGrandpar *gp;
+			DependencyPartGrandSibl *GS;
+			DependencyPartTriSibl *TS;
+			int g,h,m,s,os;
 			switch (type) {
 				case DEPENDENCYPART_SIBL:
 					sibl = static_cast<DependencyPartSibl*>( (*dependency_parts)[r]);
@@ -780,6 +783,23 @@ void printSampleFromEdge2parts(vector<vector<int> > edge2parts, DependencyParts 
 					gp = static_cast<DependencyPartGrandpar*>( (*dependency_parts)[r]);
 					currOutput += "GP(" + SSTR(gp->grandparent()) + "," + SSTR(gp->head()) + "," + SSTR(gp->modifier()) + "), ";
 					break;
+				case DEPENDENCYPART_GRANDSIBL:
+					GS = static_cast<DependencyPartGrandSibl*>((*dependency_parts)[r]);
+					g = GS->grandparent();
+					h = GS->head();
+					m = GS->modifier();
+					s = GS->sibling();
+					currOutput += "GS(" + SSTR(g) + "," + SSTR(h) + "," + SSTR(m) + "," + SSTR(s) + "), ";
+					break;
+				case DEPENDENCYPART_TRISIBL:
+					TS = static_cast<DependencyPartTriSibl*>((*dependency_parts)[r]);
+					h = TS->head();
+					m = TS->modifier();
+					s = TS->sibling();
+					os = TS->other_sibling();
+					currOutput += "TS(" + SSTR(h) + "," + SSTR(m) + "," + SSTR(s) + "," + SSTR(os) + "), ";
+					break;
+
 				default:
 					currOutput += "\n\n BAD PART TYPE: " + SSTR(type);
 			}
@@ -1127,6 +1147,7 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 	vector<int> vSubTree = (*subTrees)[v];
 
 	(*E)[u][v] = -2;
+	(*part2prob)[r] = 1.0
 
 	for (int i= 0; i < lostEdgesIndices.size(); i++) {
 		int r1 = lostEdgesIndices[i];
