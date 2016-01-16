@@ -46,6 +46,7 @@ class DependencyOptions : public Options {
   bool prune_basic() { return prune_basic_; }
   bool use_pretrained_pruner() { return use_pretrained_pruner_; }
   const string &GetPrunerModelFilePath() { return file_pruner_model_; }
+  const string &GetParserResultsDirPath() { return dir_parser_results_; }
   double GetPrunerPosteriorThreshold() { return pruner_posterior_threshold_; }
   double GetPrunerMaxHeads() { return pruner_max_heads_; }
 
@@ -68,6 +69,7 @@ class DependencyOptions : public Options {
   bool prune_basic_;
   bool use_pretrained_pruner_;
   string file_pruner_model_;
+  string dir_parser_results_;
   double pruner_posterior_threshold_;
   int pruner_max_heads_;
   bool use_arbitrary_siblings_;

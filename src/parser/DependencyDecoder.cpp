@@ -28,6 +28,8 @@
 #include <iostream>
 #include <Eigen/Dense>
 #include "logval.h"
+#include "Utils.h"
+#include <fstream>
 
 #define SSTR( x ) dynamic_cast< std::ostringstream & >( \
         ( std::ostringstream() << std::dec << x ) ).str()
@@ -277,6 +279,7 @@ void DependencyDecoder::Decode(Instance *instance, Parts *parts,
       DecodeBasic(instance, parts, copied_scores, predicted_output, &value);
     }
   }
+  inc_n_instances();
 
   // If labeled parsing, write the components of the predicted output that
   // correspond to the labeled parts.
@@ -1147,7 +1150,7 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 	vector<int> vSubTree = (*subTrees)[v];
 
 	(*E)[u][v] = -2;
-	(*part2prob)[r] = 1.0
+	(*part2prob)[r] = 1.0;
 
 	for (int i= 0; i < lostEdgesIndices.size(); i++) {
 		int r1 = lostEdgesIndices[i];
@@ -2120,21 +2123,63 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 	subTrees.clear();
 }
 
-void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
-                                          const vector<double> &scores,
-                                          vector<double> *predicted_output) {
+void initParserHeads(const string dirPath, int nInstance, vector<int> *parserHeads) {
+	ifstream is;
+	const string filePath = dirPath + "/output_" + SSTR(nInstance) + ".txt";
+	is.open(filePath.c_str(), ifstream::in);
+	string line;
+	getline(is, line);
+	getline(is, line);
+	getline(is, line);
+	vector<string> fields;
+	StringSplit(line, ",", &fields);
+	vector<string> firstHead;
+	StringSplit(fields[0], "=", &firstHead);
 
+	int firstHeadInt;
+	stringstream(firstHead[1]) >> firstHeadInt;
+	parserHeads->push_back(0);
+	parserHeads->push_back(firstHeadInt);
+//	string toPrint = "heads are: 0," + SSTR(firstHeadInt);
+	for (int i=1; i < fields.size(); i++) {
+		int currHead;
+		stringstream(fields[i]) >> currHead;
+		parserHeads->push_back(currHead);
+//		toPrint += "," + SSTR(currHead);
+	}
+//	cout << toPrint << endl;
+	is.clear();
+	is.close();
+}
+
+void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
+                                          vector<double> &scores,
+                                          vector<double> *predicted_output) {
 	bool printIlan = false;
 	DependencyParts *dependency_parts = static_cast<DependencyParts*>(parts);
 	DependencyInstanceNumeric* sentence = static_cast<DependencyInstanceNumeric*>(instance);
 	int sentenceSize = sentence->size();
+	double alpha = pipe_->GetDependencyOptions()->alpha();
+	double beta = pipe_->GetDependencyOptions()->beta();
+	double gamma = pipe_->GetDependencyOptions()->gamma();
+	int offset_arcs, num_arcs;
+	dependency_parts->GetOffsetArc(&offset_arcs, &num_arcs);
+
+	vector<int> parserHeads;
+	if (pipe_->GetDependencyOptions()->gamma() > 0.0) {
+		initParserHeads(pipe_->GetDependencyOptions()->GetParserResultsDirPath(),get_n_instances(), &parserHeads);
+		for (int v = 1; v < sentenceSize; v++) {
+			int u = parserHeads[v];
+			int r = dependency_parts->FindArc(u,v);
+			if (r > 0) {
+				scores[r] += gamma;
+			}
+		}
+	}
+
 //	if (100 == sentenceSize) {
 //		printIlan = true;
 //	}
-	double alpha = pipe_->GetDependencyOptions()->alpha();
-	double beta = pipe_->GetDependencyOptions()->beta();
-	int offset_arcs, num_arcs;
-	dependency_parts->GetOffsetArc(&offset_arcs, &num_arcs);
 
 	vector<int> roots,heads;
 	vector<double> edge2Gain, edge2Loss, part2prob, part2val;
@@ -2225,7 +2270,7 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 }
 
 void DependencyDecoder::Decode2SidedMinLoss(Instance *instance, Parts *parts,
-                                          const vector<double> &scores,
+                                          vector<double> &scores,
                                           vector<double> *predicted_output) {
 
 	bool printIlan = false;

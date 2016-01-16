@@ -34,6 +34,7 @@ DEFINE_bool(train, false,
 DEFINE_string(ilan_decoding,"","ilan decoding algorithm");
 DEFINE_double(alpha,1.0,"alpha for calculating the probability in ilan decoding algorithm");
 DEFINE_double(beta,0.5,"beta for loss/gain balancing in ilan decoding algorithm");
+DEFINE_double(gamma,0.0,"gamma for parser bias in ilan decoding algorithm");
 DEFINE_int32(improveLocal, 0,
             "number of local improvement after inference.");
 DEFINE_bool(test, false,
