@@ -74,7 +74,7 @@ void Options::Initialize() {
   ilan_decoding_ = FLAGS_ilan_decoding;
   alpha_ = FLAGS_alpha;
   beta_ = FLAGS_beta;
-  gamma_ = FLAGS_beta;
+  gamma_ = FLAGS_gamma;
   improveLocal_ = FLAGS_improveLocal;
   evaluate_ = FLAGS_evaluate;
   train_epochs_ = FLAGS_train_epochs;
