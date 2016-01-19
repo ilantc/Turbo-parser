@@ -2197,6 +2197,7 @@ int calcDistance(vector<int> heads1, vector<int> heads2) {
 		}
 	}
 	return distance;
+}
 
 void initParserHeads(const string dirPath, int nInstance, vector<int> *parserHeads) {
 	ifstream is;
