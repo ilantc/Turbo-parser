@@ -73,6 +73,8 @@ DEFINE_bool(use_pretrained_pruner, false,
 DEFINE_string(file_pruner_model, "",
               "Path to the file containing the pre-trained pruner model. Must "
               "activate the flag --use_pretrained_pruner");
+DEFINE_string(dir_parser_results, "",
+              "Path to the dir containing the parser results");
 DEFINE_double(pruner_posterior_threshold, 0.0001,
             "Posterior probability threshold for an arc to be pruned, in basic "
             "pruning. For each  word m, if "
@@ -202,6 +204,7 @@ void DependencyOptions::Initialize() {
   prune_basic_ = FLAGS_prune_basic;
   use_pretrained_pruner_ = FLAGS_use_pretrained_pruner;
   file_pruner_model_ = FLAGS_file_pruner_model;
+  dir_parser_results_ = FLAGS_dir_parser_results;
   pruner_posterior_threshold_ = FLAGS_pruner_posterior_threshold;
   pruner_max_heads_ = FLAGS_pruner_max_heads;
 
