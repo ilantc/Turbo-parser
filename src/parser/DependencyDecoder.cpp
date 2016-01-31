@@ -2162,6 +2162,7 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 	double alpha = pipe_->GetDependencyOptions()->alpha();
 	double beta = pipe_->GetDependencyOptions()->beta();
 	double gamma = pipe_->GetDependencyOptions()->gamma();
+	double gamma2 = pipe_->GetDependencyOptions()->gamma2();
 	int offset_arcs, num_arcs;
 	dependency_parts->GetOffsetArc(&offset_arcs, &num_arcs);
 
@@ -2171,11 +2172,45 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 		for (int v = 1; v < sentenceSize; v++) {
 			int u = parserHeads[v];
 			int r = dependency_parts->FindArc(u,v);
-			if (r > 0) {
+			if (r >= 0) {
 				scores[r] += gamma;
 			}
 		}
 	}
+	if (pipe_->GetDependencyOptions()->gamma2() > 0.0) {
+		if (parserHeads.size() == 0) {
+			initParserHeads(pipe_->GetDependencyOptions()->GetParserResultsDirPath(),get_n_instances(), &parserHeads);
+		}
+		for (int r = 0; r < dependency_parts->size(); r++) {
+			DependencyPartSibl *Sibl;
+			DependencyPartGrandpar *GP;
+			Part *currPart = (*dependency_parts)[r];
+			int h,m,s,g;
+			switch (currPart->type()) {
+				case DEPENDENCYPART_SIBL:
+					Sibl = static_cast<DependencyPartSibl*>(currPart);
+					h = Sibl->head();
+					m = Sibl->modifier();
+					s = Sibl->sibling();
+					if ((parserHeads[m] == h) && (parserHeads[s] == h) ) {
+						scores[r] += gamma2;
+					}
+					break;
+				case DEPENDENCYPART_GRANDPAR:
+					GP = static_cast<DependencyPartGrandpar*>(currPart);
+					g = GP->grandparent();
+					h = GP->head();
+					m = GP->modifier();
+					if ((parserHeads[m] == h) && (parserHeads[h] == g) ) {
+						scores[r] += gamma2;
+					}
+					break;
+				default:
+					break;
+			}
+		}
+	}
+
 
 //	if (100 == sentenceSize) {
 //		printIlan = true;
