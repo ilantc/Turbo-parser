@@ -28,6 +28,8 @@
 #include <iostream>
 #include <Eigen/Dense>
 #include "logval.h"
+#include "Utils.h"
+#include <fstream>
 
 #define SSTR( x ) dynamic_cast< std::ostringstream & >( \
         ( std::ostringstream() << std::dec << x ) ).str()
@@ -277,6 +279,7 @@ void DependencyDecoder::Decode(Instance *instance, Parts *parts,
       DecodeBasic(instance, parts, copied_scores, predicted_output, &value);
     }
   }
+  inc_n_instances();
 
   // If labeled parsing, write the components of the predicted output that
   // correspond to the labeled parts.
@@ -771,6 +774,9 @@ void printSampleFromEdge2parts(vector<vector<int> > edge2parts, DependencyParts 
 			int type = (*dependency_parts)[r]->type();
 			DependencyPartSibl *sibl;
 			DependencyPartGrandpar *gp;
+			DependencyPartGrandSibl *GS;
+			DependencyPartTriSibl *TS;
+			int g,h,m,s,os;
 			switch (type) {
 				case DEPENDENCYPART_SIBL:
 					sibl = static_cast<DependencyPartSibl*>( (*dependency_parts)[r]);
@@ -780,6 +786,23 @@ void printSampleFromEdge2parts(vector<vector<int> > edge2parts, DependencyParts 
 					gp = static_cast<DependencyPartGrandpar*>( (*dependency_parts)[r]);
 					currOutput += "GP(" + SSTR(gp->grandparent()) + "," + SSTR(gp->head()) + "," + SSTR(gp->modifier()) + "), ";
 					break;
+				case DEPENDENCYPART_GRANDSIBL:
+					GS = static_cast<DependencyPartGrandSibl*>((*dependency_parts)[r]);
+					g = GS->grandparent();
+					h = GS->head();
+					m = GS->modifier();
+					s = GS->sibling();
+					currOutput += "GS(" + SSTR(g) + "," + SSTR(h) + "," + SSTR(m) + "," + SSTR(s) + "), ";
+					break;
+				case DEPENDENCYPART_TRISIBL:
+					TS = static_cast<DependencyPartTriSibl*>((*dependency_parts)[r]);
+					h = TS->head();
+					m = TS->modifier();
+					s = TS->sibling();
+					os = TS->other_sibling();
+					currOutput += "TS(" + SSTR(h) + "," + SSTR(m) + "," + SSTR(s) + "," + SSTR(os) + "), ";
+					break;
+
 				default:
 					currOutput += "\n\n BAD PART TYPE: " + SSTR(type);
 			}
@@ -1127,6 +1150,7 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 	vector<int> vSubTree = (*subTrees)[v];
 
 	(*E)[u][v] = -2;
+	(*part2prob)[r] = 1.0;
 
 	for (int i= 0; i < lostEdgesIndices.size(); i++) {
 		int r1 = lostEdgesIndices[i];
@@ -2099,21 +2123,98 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 	subTrees.clear();
 }
 
-void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
-                                          const vector<double> &scores,
-                                          vector<double> *predicted_output) {
+void initParserHeads(const string dirPath, int nInstance, vector<int> *parserHeads) {
+	ifstream is;
+	const string filePath = dirPath + "/output_" + SSTR(nInstance) + ".txt";
+	is.open(filePath.c_str(), ifstream::in);
+	string line;
+	getline(is, line);
+	getline(is, line);
+	getline(is, line);
+	vector<string> fields;
+	StringSplit(line, ",", &fields);
+	vector<string> firstHead;
+	StringSplit(fields[0], "=", &firstHead);
 
+	int firstHeadInt;
+	stringstream(firstHead[1]) >> firstHeadInt;
+	parserHeads->push_back(0);
+	parserHeads->push_back(firstHeadInt);
+//	string toPrint = "heads are: 0," + SSTR(firstHeadInt);
+	for (int i=1; i < fields.size(); i++) {
+		int currHead;
+		stringstream(fields[i]) >> currHead;
+		parserHeads->push_back(currHead);
+//		toPrint += "," + SSTR(currHead);
+	}
+//	cout << toPrint << endl;
+	is.clear();
+	is.close();
+}
+
+void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
+                                          vector<double> &scores,
+                                          vector<double> *predicted_output) {
 	bool printIlan = false;
 	DependencyParts *dependency_parts = static_cast<DependencyParts*>(parts);
 	DependencyInstanceNumeric* sentence = static_cast<DependencyInstanceNumeric*>(instance);
 	int sentenceSize = sentence->size();
+	double alpha = pipe_->GetDependencyOptions()->alpha();
+	double beta = pipe_->GetDependencyOptions()->beta();
+	double gamma = pipe_->GetDependencyOptions()->gamma();
+	double gamma2 = pipe_->GetDependencyOptions()->gamma2();
+	int offset_arcs, num_arcs;
+	dependency_parts->GetOffsetArc(&offset_arcs, &num_arcs);
+
+	vector<int> parserHeads;
+	if (pipe_->GetDependencyOptions()->gamma() > 0.0) {
+		initParserHeads(pipe_->GetDependencyOptions()->GetParserResultsDirPath(),get_n_instances(), &parserHeads);
+		for (int v = 1; v < sentenceSize; v++) {
+			int u = parserHeads[v];
+			int r = dependency_parts->FindArc(u,v);
+			if (r >= 0) {
+				scores[r] += gamma;
+			}
+		}
+	}
+	if (pipe_->GetDependencyOptions()->gamma2() > 0.0) {
+		if (parserHeads.size() == 0) {
+			initParserHeads(pipe_->GetDependencyOptions()->GetParserResultsDirPath(),get_n_instances(), &parserHeads);
+		}
+		for (int r = 0; r < dependency_parts->size(); r++) {
+			DependencyPartSibl *Sibl;
+			DependencyPartGrandpar *GP;
+			Part *currPart = (*dependency_parts)[r];
+			int h,m,s,g;
+			switch (currPart->type()) {
+				case DEPENDENCYPART_SIBL:
+					Sibl = static_cast<DependencyPartSibl*>(currPart);
+					h = Sibl->head();
+					m = Sibl->modifier();
+					s = Sibl->sibling();
+					if ((parserHeads[m] == h) && (parserHeads[s] == h) ) {
+						scores[r] += gamma2;
+					}
+					break;
+				case DEPENDENCYPART_GRANDPAR:
+					GP = static_cast<DependencyPartGrandpar*>(currPart);
+					g = GP->grandparent();
+					h = GP->head();
+					m = GP->modifier();
+					if ((parserHeads[m] == h) && (parserHeads[h] == g) ) {
+						scores[r] += gamma2;
+					}
+					break;
+				default:
+					break;
+			}
+		}
+	}
+
+
 //	if (100 == sentenceSize) {
 //		printIlan = true;
 //	}
-	double alpha = pipe_->GetDependencyOptions()->alpha();
-	double beta = pipe_->GetDependencyOptions()->beta();
-	int offset_arcs, num_arcs;
-	dependency_parts->GetOffsetArc(&offset_arcs, &num_arcs);
 
 	vector<int> roots,heads;
 	vector<double> edge2Gain, edge2Loss, part2prob, part2val;
@@ -2204,7 +2305,7 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 }
 
 void DependencyDecoder::Decode2SidedMinLoss(Instance *instance, Parts *parts,
-                                          const vector<double> &scores,
+                                          vector<double> &scores,
                                           vector<double> *predicted_output) {
 
 	bool printIlan = false;

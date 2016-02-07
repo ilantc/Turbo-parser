@@ -27,8 +27,12 @@ class DependencyPipe;
 
 class DependencyDecoder : public Decoder {
  public:
-  DependencyDecoder() {};
-  DependencyDecoder(DependencyPipe *pipe) : pipe_(pipe) {};
+  DependencyDecoder() {
+	  nInstances_ = 0;
+  };
+  DependencyDecoder(DependencyPipe *pipe) : pipe_(pipe) {
+	  nInstances_ = 0;
+  };
   virtual ~DependencyDecoder() {};
 
   void Decode(Instance *instance, Parts *parts, 
@@ -85,11 +89,11 @@ class DependencyDecoder : public Decoder {
                         double *entropy);
 
   void DecodeMinLoss(Instance *instance, Parts *parts,
-		  	  	  	 const vector<double> &scores,
+		  	  	  	 vector<double> &scores,
 		  	  	  	 vector<double> *predicted_output);
 
   void Decode2SidedMinLoss(Instance *instance, Parts *parts,
-	  	  	 const vector<double> &scores,
+	  	  	 vector<double> &scores,
 	  	  	 vector<double> *predicted_output);
 
   void DecodeFactorGraph(Instance *instance, Parts *parts,
@@ -103,6 +107,12 @@ class DependencyDecoder : public Decoder {
                                  vector<vector<double> > *candidate_scores,
                                  vector<int> *heads,
                                  double *value);
+  void inc_n_instances() {
+	 nInstances_++;
+  };
+  int get_n_instances() {
+	  return nInstances_;
+  };
 
 #ifdef USE_CPLEX
   void DecodeCPLEX(Instance *instance, Parts *parts,
@@ -113,6 +123,7 @@ class DependencyDecoder : public Decoder {
 #endif
  protected:
   DependencyPipe *pipe_;
+  int nInstances_;
 };
 
 #endif /* DEPENDENCYDECODER_H_ */
