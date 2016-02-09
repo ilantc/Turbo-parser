@@ -77,6 +77,7 @@ void Options::Initialize() {
   alpha_ = FLAGS_alpha;
   beta_ = FLAGS_beta;
   gamma_ = FLAGS_gamma;
+  gamma2_ = FLAGS_gamma2;
   improveLocal_ = FLAGS_improveLocal;
   evaluate_ = FLAGS_evaluate;
   train_epochs_ = FLAGS_train_epochs;
