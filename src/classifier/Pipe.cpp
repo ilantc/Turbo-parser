@@ -102,6 +102,7 @@ void writeScores(Instance *instance, Parts *parts, vector<double> *scores, int f
 	os << "#" + goldenString + "\n";
 	os << "#" + predictionString + "\n";
 	string typeStr = "";
+	/*
 	for (int r = 0; r < parts->size(); ++r) {
 //		cout << "type is: " << (*parts)[r]->type() << endl;
 		switch ((*parts)[r]->type()) {
@@ -192,6 +193,7 @@ void writeScores(Instance *instance, Parts *parts, vector<double> *scores, int f
 		os << "\n";
 		typeStr = "";
 	}
+	*/
 //	cout << "count is: " << parts->size() << endl;
 	str = os.str();
 	fileNameOs << "output_" << fileId << ".txt";
