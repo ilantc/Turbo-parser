@@ -35,6 +35,8 @@ DEFINE_string(ilan_decoding,"","ilan decoding algorithm");
 DEFINE_double(alpha,1.0,"alpha for calculating the probability in ilan decoding algorithm");
 DEFINE_double(beta,0.5,"beta for loss/gain balancing in ilan decoding algorithm");
 DEFINE_double(gamma,0.0,"gamma for parser bias in ilan decoding algorithm");
+DEFINE_double(gamma2,0.0,"gamma for 2nd order parser bias in ilan decoding algorithm");
+DEFINE_bool(useUnionTree, false,"True for restarting from parser - ilan decoding union tree.");
 DEFINE_int32(improveLocal, 0,
             "number of local improvement after inference.");
 DEFINE_bool(test, false,
@@ -75,6 +77,7 @@ void Options::Initialize() {
   alpha_ = FLAGS_alpha;
   beta_ = FLAGS_beta;
   gamma_ = FLAGS_gamma;
+  gamma2_ = FLAGS_gamma2;
   improveLocal_ = FLAGS_improveLocal;
   evaluate_ = FLAGS_evaluate;
   train_epochs_ = FLAGS_train_epochs;

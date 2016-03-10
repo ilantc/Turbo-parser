@@ -37,6 +37,8 @@ DECLARE_string(ilan_decoding);
 DECLARE_double(alpha);
 DECLARE_double(beta);
 DECLARE_double(gamma);
+DECLARE_double(gamma2);
+DECLARE_bool(useUnionTree);
 DECLARE_int32(train_epochs);
 DECLARE_double(train_regularization_constant);
 DECLARE_double(train_initial_learning_rate);
@@ -77,6 +79,8 @@ class Options {
   double alpha() { return alpha_; }
   double beta() { return beta_; }
   double gamma() { return gamma_; }
+  double gamma2() { return gamma2_; }
+  bool useUnionTree() { return useUnionTree_; }
   int improveLocal() { return improveLocal_; }
   bool only_supported_features() { return only_supported_features_; }
   bool train() { return train_; }
@@ -130,6 +134,8 @@ class Options {
   double alpha_;
   double beta_;
   double gamma_;
+  double gamma2_;
+  bool useUnionTree_;
   int improveLocal_;
 };
 
