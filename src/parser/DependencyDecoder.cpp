@@ -829,9 +829,8 @@ void initsecondaryDS(vector<int> *roots, vector<vector<int> > *subTrees, int sen
 }
 
 void initDataStructures(DependencyParts *dependency_parts, int offset_arcs, int num_arcs, int sentenceSize,
-		vector<double> *edge2Gain, vector<double> *edge2Loss, vector<double> *part2prob, const vector<double> &scores,
-		vector<vector<int> > *edge2LostEdges, vector<vector<int> > *edge2LostParts, vector<vector<int> > *E,
-		vector<vector<int> > *edge2parts, vector<double> *part2val, double alpha, vector<int> *heads) {
+		vector<double> *part2prob, const vector<double> &scores, vector<vector<int> > *edge2LostEdges,
+		vector<vector<int> > *edge2LostParts, vector<vector<int> > *E, vector<vector<int> > *edge2parts, vector<double> *part2val, double alpha, vector<int> *heads) {
 
 
 	(*edge2LostEdges).assign(num_arcs,vector<int>());
@@ -890,10 +889,6 @@ void initDataStructures(DependencyParts *dependency_parts, int offset_arcs, int 
 		}
 	}
 
-
-
-	(*edge2Gain).resize(num_arcs);
-	(*edge2Loss).resize(num_arcs);
 	vector<double> copied_scores(scores);
 
 	(*part2val) = scores;
@@ -1130,9 +1125,8 @@ void updateDataLite(int u, int v,DependencyParts *dependency_parts, int num_arcs
 }
 
 void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, int sentenceSize, vector<int> *roots,
-		vector<double> *edge2Gain, vector<double> *edge2Loss, vector<double> *part2prob, const vector<double> &scores,
-		vector<vector<int> > *edge2LostEdges, vector<vector<int> > *edge2LostParts, vector<vector<int> > *E, vector<vector<int> > *subTrees,
-		vector<vector<int> > *edge2parts, vector<double> *predicted_output, vector<double> *part2val, double alpha, vector<int> heads) {
+		vector<double> *part2prob, const vector<double> &scores, vector<vector<int> > *edge2LostEdges, vector<vector<int> > *edge2LostParts,
+		vector<vector<int> > *E, vector<vector<int> > *subTrees, vector<vector<int> > *edge2parts, vector<double> *predicted_output, vector<double> *part2val, double alpha, vector<int> heads) {
 
 
 	double eps = 0.00001;
@@ -1271,29 +1265,33 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 				int r2 = (*E)[node2][uRoot];
 				if (r2 < 0) continue;
 				(*edge2LostEdges)[r1].push_back(r2);
+				vector<int> sharedParts;
 				for (int k = 0; k < (*edge2parts)[r2].size(); k++) {
 					bool found = false;
+					int curr = (*edge2parts)[r2][k];
 					for (int l = 0; l < (*edge2LostParts)[r1].size(); l++) {
-						if ( (*edge2LostParts)[r1][l] ==  (*edge2parts)[r2][k]) {
+						if ( (*edge2LostParts)[r1][l] ==  curr) {
 							found = true;
+							sharedParts.push_back(curr);
 							break;
 						}
 					}
 					if (! found) {
-						(*edge2LostParts)[r1].push_back((*edge2parts)[r2][k]);
+						(*edge2LostParts)[r1].push_back(curr);
 					}
 				}
 				(*edge2LostEdges)[r2].push_back(r1);
 				for (int k = 0; k < (*edge2parts)[r1].size(); k++) {
 					bool found = false;
-					for (int l = 0; l < (*edge2LostParts)[r2].size(); l++) {
-						if ( (*edge2LostParts)[r2][l] == (*edge2parts)[r1][k]) {
+					int curr = (*edge2parts)[r1][k];
+					for (int l = 0; l < sharedParts.size(); l++) {
+						if ( sharedParts[l] == curr) {
 							found = true;
 							break;
 						}
 					}
 					if (! found) {
-						(*edge2LostParts)[r2].push_back((*edge2parts)[r1][k]);
+						(*edge2LostParts)[r2].push_back(curr);
 					}
 				}
 			}
@@ -1396,8 +1394,8 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 
 void calcLoss(int r, const vector<double> &scores, vector<vector<int> > &edge2parts, const vector<double> &part2prob, vector<vector<int> > *edge2LostEdges,
 		vector<vector<int> > *edge2LostParts, double *val, const vector<double> *part2val, bool printIlan, DependencyParts *dependency_parts, double beta) {
-	double gain = scores[r];
 	double edge_prob = part2prob[r];
+	double gain = scores[r] * edge_prob;
 	if (printIlan) {
 		cout << "parts gained:\n" << (*dependency_parts)[r]->toStr() << " = " << gain;
 	}
@@ -1407,12 +1405,13 @@ void calcLoss(int r, const vector<double> &scores, vector<vector<int> > &edge2pa
 		if (part2prob[part_r] < -0.5) {
 			gainedParts2remove.push_back(part_index);
 		} else {
-			gain += (*part2val)[part_r] / edge_prob;
+			gain += (*part2val)[part_r];
 			if (printIlan) {
 				cout << ", " << (*dependency_parts)[part_r]->toStr() << " = " << (*part2val)[part_r] / edge_prob;
 			}
 		}
 	}
+	gain /= edge_prob;
 	for (int part2removeIndex = gainedParts2remove.size() - 1; part2removeIndex >= 0; part2removeIndex--) {
 		edge2parts[r].erase(edge2parts[r].begin() + gainedParts2remove[part2removeIndex]);
 	}
@@ -1906,47 +1905,47 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 	bool verbose = false;
 	int nimprovements = 0;
 	calcSubTrees(heads, &subTrees);
-	if (verbose) {
-		for (int r=1; r < heads.size(); r++) {
-			cout << "(" << heads[r] << "," << r << "), ";
-		}
-		cout << endl;
-		for (int r=0; r < (*predicted_output).size(); r++) {
-			string partStr = "";
-			DependencyPartArc *arc;
-			DependencyPartSibl *sibl;
-			DependencyPartGrandpar *GP;
-			DependencyPartGrandSibl *GS;
-			DependencyPartTriSibl *TS;
-			Part *currPart = (*dependency_parts)[r];
-			switch (currPart->type()) {
-				case DEPENDENCYPART_SIBL:
-					sibl = static_cast<DependencyPartSibl*>(currPart);
-					partStr = sibl->toStr();
-					break;
-				case DEPENDENCYPART_GRANDPAR:
-					GP = static_cast<DependencyPartGrandpar*>(currPart);
-					partStr = GP->toStr();
-					break;
-				case DEPENDENCYPART_ARC:
-					arc = static_cast<DependencyPartArc*>(currPart);
-					partStr = arc->toStr();
-					break;
-				case DEPENDENCYPART_GRANDSIBL:
-					GS = static_cast<DependencyPartGrandSibl*>(currPart);
-					partStr = GS->toStr();
-					break;
-				case DEPENDENCYPART_TRISIBL:
-					TS = static_cast<DependencyPartTriSibl*>(currPart);
-					partStr = TS->toStr();
-					break;
-				default:
-					LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
-					CHECK(false);
-			}
-			cout << r << ", " << scores[r] << ", " << (*predicted_output)[r] << "," << partStr << endl;
-		}
-	}
+//	if (verbose) {
+//		for (int r=1; r < heads.size(); r++) {
+//			cout << "(" << heads[r] << "," << r << "), ";
+//		}
+//		cout << endl;
+//		for (int r=0; r < (*predicted_output).size(); r++) {
+//			string partStr = "";
+//			DependencyPartArc *arc;
+//			DependencyPartSibl *sibl;
+//			DependencyPartGrandpar *GP;
+//			DependencyPartGrandSibl *GS;
+//			DependencyPartTriSibl *TS;
+//			Part *currPart = (*dependency_parts)[r];
+//			switch (currPart->type()) {
+//				case DEPENDENCYPART_SIBL:
+//					sibl = static_cast<DependencyPartSibl*>(currPart);
+//					partStr = sibl->toStr();
+//					break;
+//				case DEPENDENCYPART_GRANDPAR:
+//					GP = static_cast<DependencyPartGrandpar*>(currPart);
+//					partStr = GP->toStr();
+//					break;
+//				case DEPENDENCYPART_ARC:
+//					arc = static_cast<DependencyPartArc*>(currPart);
+//					partStr = arc->toStr();
+//					break;
+//				case DEPENDENCYPART_GRANDSIBL:
+//					GS = static_cast<DependencyPartGrandSibl*>(currPart);
+//					partStr = GS->toStr();
+//					break;
+//				case DEPENDENCYPART_TRISIBL:
+//					TS = static_cast<DependencyPartTriSibl*>(currPart);
+//					partStr = TS->toStr();
+//					break;
+//				default:
+//					LOG(ERROR) << "BAD PART TYPE: " << currPart->type() << endl;
+//					CHECK(false);
+//			}
+//			cout << r << ", " << scores[r] << ", " << (*predicted_output)[r] << "," << partStr << endl;
+//		}
+//	}
 
 	while (improved && nimprovements < maxImprovements) {
 		vector<double> predicted_output_copy;
@@ -1989,7 +1988,7 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 				if (uw_r < 0) {
 					continue;
 				}
-				verbose && cout << "trying (u,v,x,w) = (" << u << "," << v << "," << x << "," << w << ")" << endl;
+//				verbose && cout << "trying (u,v,x,w) = (" << u << "," << v << "," << x << "," << w << ")" << endl;
 				int vw_r = (*E)[v][w];
 				double uv_vw_contribution;
 				if (v == 3 && u == 0 && x == 1 && w == 1) {
@@ -2004,34 +2003,34 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 				} else {
 					uv_vw_contribution = calc2EdgesContribution(uv_r, vw_r, predicted_output, edge2parts,scores, dependency_parts, E);
 				}
-				verbose && cout << "uv_r = " << uv_r << ", vw_r = " << vw_r << ", uv_vw_contribution = " << uv_vw_contribution << endl;
+//				verbose && cout << "uv_r = " << uv_r << ", vw_r = " << vw_r << ", uv_vw_contribution = " << uv_vw_contribution << endl;
 				if (uv_r >= 0) {
-					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 0" << endl;
+//					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 0" << endl;
 					(*predicted_output)[uv_r] = 0.0;
 				}
 				if (vw_r >= 0) {
-					verbose && cout << "vw_r: setting out[" << vw_r << "] to be 0" << endl;
+//					verbose && cout << "vw_r: setting out[" << vw_r << "] to be 0" << endl;
 					(*predicted_output)[vw_r] = 0.0;
 				}
-				verbose && cout << "uw_r: setting out[" << uw_r << "] to be 1" << endl;
+//				verbose && cout << "uw_r: setting out[" << uw_r << "] to be 1" << endl;
 				(*predicted_output)[uw_r] = 1.0;
-				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 1" << endl;
+//				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 1" << endl;
 				(*predicted_output)[xv_r] = 1.0;
 				double uw_xv_contribution = calc2EdgesContribution(uw_r, xv_r, predicted_output, edge2parts,scores, dependency_parts, E);
-				verbose && cout << "uw_r = " << uw_r << ", xv_r = " << xv_r << ", uw_xv_contribution = " << uw_xv_contribution << endl;
+//				verbose && cout << "uw_r = " << uw_r << ", xv_r = " << xv_r << ", uw_xv_contribution = " << uw_xv_contribution << endl;
 				if (uv_r >= 0) {
-					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 1" << endl;
+//					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 1" << endl;
 					(*predicted_output)[uv_r] = 1.0;
 				}
 				if (vw_r >= 0) {
-					verbose && cout << "vw_r: setting out[" << vw_r << "] to be 1" << endl;
+//					verbose && cout << "vw_r: setting out[" << vw_r << "] to be 1" << endl;
 					(*predicted_output)[vw_r] = 1.0;
 				}
-				verbose && cout << "uw_r: setting out[" << uw_r << "] to be 0" << endl;
+//				verbose && cout << "uw_r: setting out[" << uw_r << "] to be 0" << endl;
 				(*predicted_output)[uw_r] = 0.0;
-				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 0" << endl;
+//				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 0" << endl;
 				(*predicted_output)[xv_r] = 0.0;
-				checkEq(predicted_output,predicted_output_copy);
+//				checkEq(predicted_output,predicted_output_copy);
 				double gain = uw_xv_contribution - uv_vw_contribution;
 				if (gain > bestImprovement) {
 					bestImprovement = gain;
@@ -2058,22 +2057,22 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 				else {
 					uv_contribution = calcEdgeContribution(uv_r, predicted_output, edge2parts,scores, dependency_parts, E);
 				}
-				verbose && cout << "uv_r = " << uv_r << ", uv_contribution = " << uv_contribution << endl;
+//				verbose && cout << "uv_r = " << uv_r << ", uv_contribution = " << uv_contribution << endl;
 				if (uv_r >= 0) {
-					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 0" << endl;
+//					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 0" << endl;
 					(*predicted_output)[uv_r] = 0.0;
 				}
-				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 1" << endl;
+//				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 1" << endl;
 				(*predicted_output)[xv_r] = 1.0;
 				double xv_contribution = calcEdgeContribution(xv_r, predicted_output, edge2parts,scores, dependency_parts, E);
-				verbose && cout << "xv_r = " << xv_r << ", xv_contribution = " << xv_contribution << endl;
+//				verbose && cout << "xv_r = " << xv_r << ", xv_contribution = " << xv_contribution << endl;
 				if (uv_r >= 0) {
-					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 1" << endl;
+//					verbose && cout << "uv_r: setting out[" << uv_r << "] to be 1" << endl;
 					(*predicted_output)[uv_r] = 1.0;
 				}
-				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 0" << endl;
+//				verbose && cout << "xv_r: setting out[" << xv_r << "] to be 0" << endl;
 				(*predicted_output)[xv_r] = 0.0;
-				checkEq(predicted_output,predicted_output_copy);
+//				checkEq(predicted_output,predicted_output_copy);
 				double gain = xv_contribution - uv_contribution;
 				if (gain > bestImprovement) {
 					bestImprovement = gain;
@@ -2107,13 +2106,13 @@ void improveLocal(vector<double> *predicted_output,vector<vector<int> > subTrees
 				heads[best_w] = bestu;
 				toggleEdge((*E)[bestu][best_w], predicted_output, edge2parts, dependency_parts, E, true);
 			}
-			double newTreeVal = 0.0;
-			for (int r=0; r < (*predicted_output).size(); r++) {
-				newTreeVal += (scores[r] * (*predicted_output)[r]);
-			}
-			if (abs((newTreeVal - treeVal) - bestImprovement) > 0.00001) {
-				cout << "bug!, old treeVal = " << treeVal << ", newTreeVal = " << newTreeVal << ", improvement = " << bestImprovement << endl;
-			}
+//			double newTreeVal = 0.0;
+//			for (int r=0; r < (*predicted_output).size(); r++) {
+//				newTreeVal += (scores[r] * (*predicted_output)[r]);
+//			}
+//			if (abs((newTreeVal - treeVal) - bestImprovement) > 0.00001) {
+//				cout << "bug!, old treeVal = " << treeVal << ", newTreeVal = " << newTreeVal << ", improvement = " << bestImprovement << endl;
+//			}
 			calcSubTrees(heads, &subTrees);
 		}
 	}
@@ -2217,11 +2216,10 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 //	}
 
 	vector<int> roots,heads;
-	vector<double> edge2Gain, edge2Loss, part2prob, part2val;
+	vector<double> part2prob, part2val;
 	vector<vector<int> > edge2LostEdges, edge2LostParts, E, subTrees, edge2parts, edge2partsCopy, ECopy;
 
-	initDataStructures(dependency_parts, offset_arcs, num_arcs, sentenceSize, &edge2Gain, &edge2Loss, &part2prob, scores,
-			&edge2LostEdges, &edge2LostParts, &E, &edge2parts, &part2val, alpha, &heads);
+	initDataStructures(dependency_parts, offset_arcs, num_arcs, sentenceSize, &part2prob, scores, &edge2LostEdges, &edge2LostParts, &E, &edge2parts, &part2val, alpha, &heads);
 	initsecondaryDS(&roots, &subTrees, sentenceSize);
 	edge2partsCopy = edge2parts;
 	ECopy = E;
@@ -2288,7 +2286,7 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 			break;
 		}
 		heads[best_v] = best_u;
-		updateData(best_u, best_v,dependency_parts, num_arcs, sentenceSize, &roots, &edge2Gain, &edge2Loss, &part2prob, scores,
+		updateData(best_u, best_v,dependency_parts, num_arcs, sentenceSize, &roots, &part2prob, scores,
 				&edge2LostEdges, &edge2LostParts, &E, &subTrees, &edge2parts, predicted_output, &part2val,alpha, heads);
 		if (printIlan) {
 			LOG(INFO) << "\n\nafter update data";
@@ -2324,7 +2322,7 @@ void DependencyDecoder::Decode2SidedMinLoss(Instance *instance, Parts *parts,
 	vector<vector<int> > edge2LostEdges, edge2LostParts, E, edge2parts, ECopy, edge2partsCopy;
 
 
-	initDataStructures(dependency_parts, offset_arcs, num_arcs, sentenceSize, &edge2Gain, &edge2Loss, &part2prob, scores,
+	initDataStructures(dependency_parts, offset_arcs, num_arcs, sentenceSize, &part2prob, scores,
 			&edge2LostEdges, &edge2LostParts, &E, &edge2parts, &part2val,alpha,&heads);
 	edge2partsCopy = edge2parts;
 	ECopy = E;
