@@ -1395,7 +1395,8 @@ void updateData(int u, int v,DependencyParts *dependency_parts, int num_arcs, in
 void calcLoss(int r, const vector<double> &scores, vector<vector<int> > &edge2parts, const vector<double> &part2prob, vector<vector<int> > *edge2LostEdges,
 		vector<vector<int> > *edge2LostParts, double *val, const vector<double> *part2val, bool printIlan, DependencyParts *dependency_parts, double beta) {
 	double edge_prob = part2prob[r];
-	double gain = scores[r] * edge_prob;
+	double gain = scores[r];
+	double partsGain = 0.0;
 	if (printIlan) {
 		cout << "parts gained:\n" << (*dependency_parts)[r]->toStr() << " = " << gain;
 	}
@@ -1405,13 +1406,14 @@ void calcLoss(int r, const vector<double> &scores, vector<vector<int> > &edge2pa
 		if (part2prob[part_r] < -0.5) {
 			gainedParts2remove.push_back(part_index);
 		} else {
-			gain += (*part2val)[part_r];
+			partsGain += (*part2val)[part_r];
 			if (printIlan) {
 				cout << ", " << (*dependency_parts)[part_r]->toStr() << " = " << (*part2val)[part_r] / edge_prob;
 			}
 		}
 	}
-	gain /= edge_prob;
+	partsGain /= edge_prob;
+	gain += partsGain;
 	for (int part2removeIndex = gainedParts2remove.size() - 1; part2removeIndex >= 0; part2removeIndex--) {
 		edge2parts[r].erase(edge2parts[r].begin() + gainedParts2remove[part2removeIndex]);
 	}
