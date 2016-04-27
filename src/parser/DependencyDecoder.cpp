@@ -1301,7 +1301,7 @@ void calcLoss(int r, vector<vector<int> > *E,const vector<double> &scores, vecto
 		if (currPart->type() == DEPENDENCYPART_ARC) {
 			continue;
 		}
-		if ((*part2numArcs2Complete)[part_r] == -1) {
+		if ((*part2numArcs2Complete)[part_r] < 0) {
 			gainedParts2remove.push_back(part_index);
 		}
 		if ((*part2numArcs2Complete)[part_r] == 1) {
@@ -1348,7 +1348,7 @@ void calcLoss(int r, vector<vector<int> > *E,const vector<double> &scores, vecto
 		DependencyPartGrandSibl *GS;
 		DependencyPartTriSibl *TS;
 		Part *currPart = (*dependency_parts)[lost_part_r];
-		if ((*part2numArcs2Complete)[lost_part_r] == -1) {
+		if ((*part2numArcs2Complete)[lost_part_r] < 0) {
 			parts2remove.push_back(lost_part_index);
 		}
 		if ((*part2numArcs2Complete)[lost_part_r] > 0) {
@@ -2095,17 +2095,6 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 				break;
 			}
 		}
-		if (printIlan) {
-			LOG(INFO) << "\n\nchose (u,v)=" << best_u << "," << best_v << "), LostEdges=";
-			for (int r2 = 0; r2 < edge2LostEdges[E[best_u][best_v]].size(); r2++) {
-				DependencyPartArc *arc2 = static_cast<DependencyPartArc*>((*parts)[edge2LostEdges[E[best_u][best_v]][r2]]);
-				int h2 = arc2->head();
-				int m2 = arc2->modifier();
-				cout << "(" + SSTR(h2) + "," + SSTR(m2) + "), ";
-			}
-			cout << endl;
-		}
-
 
 		if (best_v == -1) {
 			break;
@@ -2114,10 +2103,6 @@ void DependencyDecoder::DecodeMinLoss(Instance *instance, Parts *parts,
 
 		updateData(best_u, best_v,dependency_parts, num_arcs, sentenceSize, &roots, scores,
 				&edge2LostEdges, &edge2LostParts, &E, &subTrees, &edge2parts, predicted_output, heads, &part2numArcs2Complete);
-		if (printIlan) {
-			LOG(INFO) << "\n\nafter update data";
-			printAll(dependency_parts, edge2LostEdges, E, roots, edge2parts, scores);
-		}
 	}
 	if (pipe_->GetDependencyOptions()->improveLocal() > 0) {
 		improveLocal(predicted_output,subTrees,edge2partsCopy,scores, dependency_parts,
