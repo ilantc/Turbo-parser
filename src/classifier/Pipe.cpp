@@ -101,7 +101,7 @@ void writeScores(Instance *instance, Parts *parts, vector<double> *scores, int f
 	getGoldAndPredictedStrings(d_instance,parts,predictions,gold_output,goldenString, predictionString);
 	os << "#" + goldenString + "\n";
 	os << "#" + predictionString + "\n";
-	string typeStr = "";
+	string typeStr = "";/*
 	for (int r = 0; r < parts->size(); ++r) {
 //		cout << "type is: " << (*parts)[r]->type() << endl;
 		switch ((*parts)[r]->type()) {
@@ -191,7 +191,7 @@ void writeScores(Instance *instance, Parts *parts, vector<double> *scores, int f
 		os << " # " << typeStr;
 		os << "\n";
 		typeStr = "";
-	}
+	}*/
 //	cout << "count is: " << parts->size() << endl;
 	str = os.str();
 	fileNameOs << "output_" << fileId << ".txt";
